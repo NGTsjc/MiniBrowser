@@ -18,6 +18,8 @@ pub struct Settings {
     pub opacity: f64,
     pub shortcut: Option<String>,
     pub pause_media_on_hide: bool,
+    pub accent_color: String,
+    pub corner_radius: u32,
 }
 
 impl Default for Settings {
@@ -31,8 +33,16 @@ impl Default for Settings {
             opacity: 1.,
             shortcut: None,
             pause_media_on_hide: true,
+            accent_color: "#2563EB".into(),
+            corner_radius: 0,
         }
     }
+}
+
+pub fn valid_accent(value: &str) -> bool {
+    value.len() == 7
+        && value.starts_with('#')
+        && value.as_bytes()[1..].iter().all(u8::is_ascii_hexdigit)
 }
 
 pub fn normalize_url(input: &str) -> Result<String, String> {
@@ -58,6 +68,13 @@ pub fn normalize_url(input: &str) -> Result<String, String> {
 
 impl Settings {
     pub fn validate(&mut self) -> Result<(), String> {
+        if self.corner_radius > 32 {
+            return Err("窗口圆角必须在 0～32 之间".into());
+        }
+        if !valid_accent(&self.accent_color) {
+            return Err("主题色必须为 #RRGGBB 格式".into());
+        }
+        self.accent_color.make_ascii_uppercase();
         self.version = 1;
         self.startup_url = normalize_url(&self.startup_url)?;
         if !self.opacity.is_finite() || !(0.2..=1.).contains(&self.opacity) {
@@ -151,6 +168,11 @@ impl PortableStore {
         read!("opacity", opacity, f64, |v: &f64| v.is_finite()
             && (0.2..=1.).contains(v));
         read!("alwaysOnTop", always_on_top, bool, |_: &bool| true);
+        read!("accentColor", accent_color, String, |v: &String| {
+            valid_accent(v)
+        });
+        settings.accent_color.make_ascii_uppercase();
+        read!("cornerRadius", corner_radius, u32, |v: &u32| *v <= 32);
         read!("pauseMediaOnHide", pause_media_on_hide, bool, |_: &bool| {
             true
         });
@@ -318,6 +340,79 @@ mod tests {
         fs::write(&path, "broken").unwrap();
         assert!(store.load().preserve_file);
         assert_eq!(fs::read_to_string(path).unwrap(), "broken");
+        fs::remove_dir_all(store.root).unwrap();
+    }
+    #[test]
+    fn accent_color_legacy_fallback_validation_and_round_trip() {
+        let store = store();
+        let path = store.root.join("settings.json");
+        fs::write(&path, r##"{"width":700,"accentColor":"#abcdef"}"##).unwrap();
+        let loaded = store.load();
+        assert_eq!(loaded.settings.accent_color, "#ABCDEF");
+        assert_eq!(loaded.settings.width, 700.);
+        assert!(!loaded.preserve_file);
+        for value in ["white", "#FFF", "#12345G", "#FFFFFF00", "#ééé"] {
+            fs::write(
+                &path,
+                serde_json::json!({"width":700,"accentColor":value}).to_string(),
+            )
+            .unwrap();
+            let loaded = store.load();
+            assert_eq!(loaded.settings.accent_color, "#2563EB");
+            assert_eq!(loaded.settings.width, 700.);
+            assert!(loaded.preserve_file);
+            let mut settings = Settings {
+                accent_color: value.into(),
+                ..Settings::default()
+            };
+            assert!(settings.validate().is_err());
+        }
+        fs::write(&path, r#"{"width":700}"#).unwrap();
+        let mut loaded = store.load();
+        assert_eq!(loaded.settings.accent_color, "#2563EB");
+        assert!(!loaded.preserve_file);
+        loaded.settings.accent_color = "#FFFFFF".into();
+        store.save(&loaded.settings).unwrap();
+        assert_eq!(store.load().settings, loaded.settings);
+        fs::remove_dir_all(store.root).unwrap();
+    }
+    #[test]
+    fn corner_radius_legacy_fallback_range_and_persistence() {
+        let store = store();
+        let path = store.root.join("settings.json");
+        fs::write(&path, r#"{"width":700}"#).unwrap();
+        assert_eq!(store.load().settings.corner_radius, 0);
+        assert!(!store.load().preserve_file);
+        for value in [
+            serde_json::json!(-1),
+            serde_json::json!(33),
+            serde_json::json!(1.5),
+            serde_json::json!("12"),
+        ] {
+            fs::write(
+                &path,
+                serde_json::json!({"width":700,"cornerRadius":value}).to_string(),
+            )
+            .unwrap();
+            let loaded = store.load();
+            assert_eq!(loaded.settings.corner_radius, 0);
+            assert_eq!(loaded.settings.width, 700.);
+            assert!(loaded.preserve_file);
+        }
+        for radius in [0, 12, 32] {
+            let mut settings = Settings {
+                corner_radius: radius,
+                ..Settings::default()
+            };
+            settings.validate().unwrap();
+            store.save(&settings).unwrap();
+            assert_eq!(store.load().settings.corner_radius, radius);
+        }
+        let mut invalid = Settings {
+            corner_radius: 33,
+            ..Settings::default()
+        };
+        assert!(invalid.validate().is_err());
         fs::remove_dir_all(store.root).unwrap();
     }
     #[test]

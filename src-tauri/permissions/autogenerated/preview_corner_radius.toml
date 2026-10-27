@@ -1,0 +1,11 @@
+# Automatically generated - DO NOT EDIT!
+
+[[permission]]
+identifier = "allow-preview-corner-radius"
+description = "Enables the preview_corner_radius command without any pre-configured scope."
+commands.allow = ["preview_corner_radius"]
+
+[[permission]]
+identifier = "deny-preview-corner-radius"
+description = "Denies the preview_corner_radius command without any pre-configured scope."
+commands.deny = ["preview_corner_radius"]

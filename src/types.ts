@@ -7,6 +7,8 @@ export interface Settings {
   opacity: number;
   shortcut: string | null;
   pauseMediaOnHide: boolean;
+  accentColor: string;
+  cornerRadius: number;
 }
 
 export interface Snapshot {

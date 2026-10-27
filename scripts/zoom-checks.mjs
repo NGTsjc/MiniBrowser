@@ -1,0 +1,112 @@
+import assert from 'node:assert/strict';
+
+export async function checkPageZoom({ browser, controls, native, until, passed, fixtureUrl }) {
+  const originalUrl = await browser.evaluate('location.href');
+  const originalSettings = (await controls.invoke('get_settings')).settings;
+  const scale = (await native()).MiniBrowser.scale;
+  const zoom = () => browser.evaluate(`window.devicePixelRatio / ${scale}`);
+  const waitZoom = value => until(async () => Math.abs(await zoom() - value) < .01);
+  const visit = async url => {
+    await browser.send('Page.navigate', { url });
+    await until(() => browser.evaluate(`location.href === ${JSON.stringify(url)} && document.readyState === 'complete'`));
+  };
+  const siteA = `${fixtureUrl}zoom-a`;
+  const siteB = siteA.replace('127.0.0.1', 'localhost');
+  await visit(siteA);
+  await native('zoomReset');
+  await waitZoom(1);
+  const geometry = (await native()).MiniBrowser;
+  await native('zoomIn');
+  const enlarged = await until(async () => { const value=await zoom();return value > 1.01 && value; });
+  await native('zoomOut');
+  await until(async () => await zoom() < enlarged - .01);
+  await native('zoomPlus');
+  await until(async () => await zoom() > 1.01);
+  await native('zoomMinus');
+  await native('zoomReset');
+  await waitZoom(1);
+  await native('zoomIn', { x:100, y:35, ticks:3 });
+  const remembered = await until(async () => {const value=await zoom();return value > enlarged + .01 && value});
+  const after = (await native()).MiniBrowser;
+  for (const key of ['x','y','width','height','cornerTopInset','alpha']) assert.equal(after[key], geometry[key]);
+  passed('native Ctrl-wheel, repeated notches, Ctrl-plus/minus and Ctrl-0 zoom only the page');
+
+  await browser.evaluate('window.__zoomReloadToken=true');
+  await browser.send('Page.reload');
+  await until(() => browser.evaluate(`window.__zoomReloadToken === undefined && document.readyState === 'complete'`));
+  await waitZoom(remembered);
+  await visit(`${fixtureUrl}zoom-same-site`);
+  await waitZoom(remembered);
+  await visit(siteB);
+  await waitZoom(1);
+  await native('zoomOut');
+  const otherZoom = await until(async () => {const value=await zoom();return value < .99 && value});
+  await visit(siteA);
+  await waitZoom(remembered);
+  await browser.evaluate(`window.open(${JSON.stringify(`${fixtureUrl}zoom-new-page`)},'_blank');true`);
+  await until(() => browser.evaluate(`location.pathname === '/zoom-new-page'`));
+  await waitZoom(remembered);
+  await visit(siteB);
+  await waitZoom(otherZoom);
+  await visit(siteA);
+  await waitZoom(remembered);
+  passed('native site zoom survives refresh, same-site and redirected new-page navigation with separate site values');
+
+  const controlScale = await controls.evaluate('window.devicePixelRatio');
+  await controls.invoke('open_settings');
+  await native('zoomControl');
+  assert.equal(await controls.evaluate('window.devicePixelRatio'), controlScale);
+  await controls.invoke('cancel_settings');
+  await waitZoom(remembered);
+  await controls.invoke('open_settings');
+  const snapshot = await controls.invoke('get_settings');
+  await controls.invoke('apply_settings', { settings: snapshot.settings, urlEdited:false });
+  await waitZoom(remembered);
+  await controls.invoke('show_context_menu');
+  await native('zoomControl', {x:100,y:35});
+  assert.equal(await controls.evaluate('window.devicePixelRatio'), controlScale);
+  await controls.invoke('dismiss_context_menu');
+  await controls.invoke('hide_window');
+  await controls.invoke('show_window');
+  await waitZoom(remembered);
+  await native('openTrayMenu');
+  await native('trayReset');
+  await waitZoom(remembered);
+  assert.deepEqual((await controls.invoke('get_settings')).settings, originalSettings);
+  passed('controls, settings apply/cancel, hide/show and tray reset preserve page zoom and native geometry');
+
+  await native('zoomReset');
+  await waitZoom(1);
+  await browser.evaluate(`(async()=>{
+    const frame=document.querySelector('iframe');
+    Object.assign(frame.style,{position:'fixed',inset:'0',width:'100vw',height:'100vh',border:'0',zIndex:'100'});
+    await new Promise(resolve=>{frame.onload=resolve;frame.src='http://localhost:18765/zoom-frame'});
+  })()`);
+  await native('zoomIn');
+  await until(async () => await zoom() > 1.01);
+  await browser.send('Page.reload');
+  await until(() => browser.evaluate(`document.readyState === 'complete'`));
+  await native('zoomReset');
+  await waitZoom(1);
+  await browser.evaluate(`(()=>{
+    document.querySelector('iframe')?.remove();
+    document.body.style.minHeight='5000px';window.scrollTo(0,0);
+    window.__customWheel=0;window.__wheelHandler=e=>{if(e.ctrlKey){e.preventDefault();window.__customWheel++}};
+    document.addEventListener('wheel',window.__wheelHandler,{passive:false});
+  })()`);
+  await native('zoomIn');
+  await until(() => browser.evaluate(`window.__customWheel > 0`));
+  await browser.evaluate(`document.removeEventListener('wheel',window.__wheelHandler)`);
+  await native('zoomReset');
+  await waitZoom(1);
+  await native('scrollPage');
+  await until(() => browser.evaluate(`window.scrollY > 0`));
+  await waitZoom(1);
+  passed('Ctrl-wheel over cross-origin frames zooms the page while custom wheel handlers and plain scrolling remain available');
+
+  await visit(siteB);
+  await native('zoomReset');
+  await visit(originalUrl);
+  await native('zoomReset');
+  await waitZoom(1);
+}

@@ -154,6 +154,13 @@ pub fn install(window: &WebviewWindow, app: &AppHandle) -> Result<(), String> {
             id: usize,
             data: usize,
         ) -> LRESULT {
+            if message == WM_NCHITTEST {
+                if let Some(hit) =
+                    crate::corners::resize_hit_test(&*(data as *const AppHandle), hwnd, lparam)
+                {
+                    return hit;
+                }
+            }
             if message == WM_EXITSIZEMOVE {
                 let app = (&*(data as *const AppHandle)).clone();
                 let handle = app.clone();

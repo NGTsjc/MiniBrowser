@@ -58,8 +58,8 @@ pub fn layout(app: &AppHandle) -> Result<Option<(i32, i32, u32, u32)>, String> {
     if let Some(monitor) = monitor {
         let scale = monitor.scale_factor();
         let area = monitor.work_area();
-        let width = ((252. * scale).round() as u32).min(area.size.width);
-        let height = ((282. * scale).round() as u32).min(area.size.height);
+        let width = ((224. * scale).round() as u32).min(area.size.width);
+        let height = ((281. * scale).round() as u32).min(area.size.height);
         let x = x.clamp(
             area.position.x,
             area.position.x + area.size.width.saturating_sub(width) as i32,
@@ -70,7 +70,7 @@ pub fn layout(app: &AppHandle) -> Result<Option<(i32, i32, u32, u32)>, String> {
         );
         Ok(Some((x, y, width, height)))
     } else {
-        Ok(Some((x, y, 252, 282)))
+        Ok(Some((x, y, 224, 281)))
     }
 }
 
@@ -91,7 +91,10 @@ pub fn dismiss(app: &AppHandle) -> Result<(), String> {
 }
 
 pub fn perform(app: &AppHandle, action: &str) -> Result<(), String> {
-    if !matches!(action, "refresh" | "hide" | "close" | "restore" | "restart") {
+    if !matches!(
+        action,
+        "settings" | "refresh" | "hide" | "close" | "restore" | "restart" | "devtools"
+    ) {
         return Err("不支持的菜单操作".into());
     }
     if app.state::<AppState>().busy.load(Ordering::SeqCst) {
@@ -99,6 +102,16 @@ pub fn perform(app: &AppHandle, action: &str) -> Result<(), String> {
     }
     dismiss(app)?;
     match action {
+        "settings" => {
+            // Returning to an open panel must not replace its unconfirmed draft.
+            if app.state::<AppState>().panel_open.load(Ordering::SeqCst) {
+                if let Some(controls) = app.get_webview_window("controls") {
+                    let _ = controls.set_focus();
+                }
+            } else {
+                windows::open_panel(app)?;
+            }
+        }
         "refresh" => {
             if let Some(browser) = app.get_webview_window("browser") {
                 browser.reload().map_err(|e| e.to_string())?;
@@ -114,6 +127,10 @@ pub fn perform(app: &AppHandle, action: &str) -> Result<(), String> {
             }
         }
         "restart" => lifecycle::exit(app, true),
+        "devtools" => {
+            let browser = app.get_webview_window("browser").ok_or("浏览窗口已关闭")?;
+            browser.open_devtools();
+        }
         _ => unreachable!(),
     }
     Ok(())
@@ -125,9 +142,9 @@ pub fn install_browser(browser: &tauri::WebviewWindow, app: &AppHandle) -> Resul
         let app = app.clone();
         browser
             .with_webview(move |webview| unsafe {
-                use ::windows::core::Interface;
+                use ::windows::core::{Interface, PWSTR};
                 use webview2_com::{
-                    ContextMenuRequestedEventHandler,
+                    CoTaskMemPWSTR, ContextMenuRequestedEventHandler,
                     Microsoft::Web::WebView2::Win32::ICoreWebView2_11,
                 };
                 if let Ok(core) = webview
@@ -137,13 +154,33 @@ pub fn install_browser(browser: &tauri::WebviewWindow, app: &AppHandle) -> Resul
                 {
                     let handler =
                         ContextMenuRequestedEventHandler::create(Box::new(move |_, args| {
-                            if let Some(args) = args {
-                                args.SetHandled(true)?;
+                            let Some(args) = args else { return Ok(()) };
+                            let target = args.ContextMenuTarget()?;
+                            let mut uri = PWSTR::null();
+                            target.PageUri(&mut uri)?;
+                            let uri = CoTaskMemPWSTR::from(uri);
+                            let uri = uri.as_ref().as_pcwstr().to_string().unwrap_or_default();
+                            let mut frame = PWSTR::null();
+                            target.FrameUri(&mut frame)?;
+                            let frame = CoTaskMemPWSTR::from(frame);
+                            let frame = frame.as_ref().as_pcwstr().to_string().unwrap_or_default();
+                            // Leave remote documents and their native/contextual
+                            // menus entirely in WebView2's control.
+                            if !is_guide_url(&uri) || !is_guide_url(&frame) {
+                                return Ok(());
                             }
+                            args.SetHandled(true)?;
                             let handle = app.clone();
                             std::thread::spawn(move || {
                                 let menu_app = handle.clone();
                                 let _ = handle.run_on_main_thread(move || {
+                                    let still_guide =
+                                        menu_app.get_webview_window("browser").is_some_and(|w| {
+                                            w.url().is_ok_and(|u| is_guide_url(u.as_str()))
+                                        });
+                                    if !still_guide {
+                                        return;
+                                    }
                                     if let Err(error) = show(&menu_app, "browser") {
                                         windows::notify(&menu_app, &error);
                                     }
@@ -160,4 +197,49 @@ pub fn install_browser(browser: &tauri::WebviewWindow, app: &AppHandle) -> Resul
     #[cfg(not(windows))]
     let _ = (browser, app);
     Ok(())
+}
+
+fn is_guide_url(value: &str) -> bool {
+    let Ok(url) = url::Url::parse(value) else {
+        return false;
+    };
+    let local = (url.scheme() == "tauri" && url.host_str() == Some("localhost"))
+        || (url.scheme() == "http"
+            && url.host_str() == Some("tauri.localhost")
+            && url.port().is_none())
+        || (cfg!(debug_assertions)
+            && url.scheme() == "http"
+            && url.host_str() == Some("127.0.0.1")
+            && url.port() == Some(1420));
+    local
+        && url.path() == "/index.html"
+        && url
+            .query_pairs()
+            .any(|(key, value)| key == "view" && value == "guide")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_guide_url;
+
+    #[test]
+    fn only_embedded_guide_uses_application_menu() {
+        for uri in [
+            "http://tauri.localhost/index.html?view=guide",
+            "tauri://localhost/index.html?view=guide",
+        ] {
+            assert!(is_guide_url(uri), "{uri}");
+        }
+        for uri in [
+            "https://example.com/index.html?view=guide",
+            "http://127.0.0.1:18765/index.html?view=guide",
+            "http://tauri.localhost/index.html?view=controls",
+            "http://tauri.localhost/other.html?view=guide",
+            "http://tauri.localhost:123/index.html?view=guide",
+            "tauri://evil/index.html?view=guide",
+            "about:blank",
+        ] {
+            assert!(!is_guide_url(uri), "{uri}");
+        }
+    }
 }

@@ -3,19 +3,20 @@ import { listen } from '@tauri-apps/api/event';
 import { bindToolbar } from './gear';
 import { createContextMenu } from './context-menu';
 import type { Settings, Snapshot } from './types';
+import { bindThemeEditor, initializeTheme } from './theme';
 import './style.css';
 
+initializeTheme();
+
 const app = document.querySelector<HTMLDivElement>('#app')!;
-const gearIcon = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><path d="m9.7 3-.6 2.2-2 .9-2-.6-2.2 3.8 1.5 1.6v2.2l-1.5 1.6 2.2 3.8 2-.6 2 .9.6 2.2h4.4l.6-2.2 2-.9 2 .6 2.2-3.8-1.5-1.6v-2.2L21 9.3l-2.2-3.8-2 .6-2-.9L14.2 3Z"/><circle cx="12" cy="12" r="3"/></svg>`;
 const view = new URLSearchParams(location.search).get('view');
 
 if (view !== 'controls') {
   document.body.classList.add('guide');
-  app.innerHTML = `<main class="welcome"><div class="brand-mark">m<span>↗</span></div><div class="eyebrow">MINIBROWSER</div><h1>给网页，一个小空间。</h1><p>点击左上角齿轮，输入想打开的网址。</p><div class="guide-card"><span>01</span><p>单击齿轮打开设置<br><small>拖动齿轮旁的背景区域，移动窗口</small></p></div><div class="guide-card"><span>02</span><p>拖动窗口边缘调整尺寸<br><small>使用托盘或快捷键找回隐藏窗口</small></p></div><footer>临时浏览会话 · 关闭后清理</footer></main>`;
+  app.innerHTML = `<main class="welcome"><div class="brand-mark">m<span>↗</span></div><div class="eyebrow">MINIBROWSER</div><h1>给网页，一个小空间。</h1><p>右键此引导页或左上角拖动区，选择设置并输入网址。</p><div class="guide-card"><span>01</span><p>右键左上角拖动区打开菜单<br><small>网页内右键保留网站原有操作</small></p></div><div class="guide-card"><span>02</span><p>拖动窗口边缘调整尺寸<br><small>使用托盘或快捷键找回隐藏窗口</small></p></div><footer>临时浏览会话 · 关闭后清理</footer></main>`;
 } else {
   app.innerHTML = `
-    <div id="toolbar" class="toolbar" title="拖动背景移动窗口">
-      <button id="gear" class="gear" title="打开设置" aria-label="打开设置">${gearIcon}</button>
+    <div id="toolbar" class="toolbar" title="按住移动窗口，右键打开菜单" aria-label="窗口拖动区">
       <span class="drag-grip" aria-hidden="true">⠿</span>
     </div>
     <section id="panel" class="panel" hidden aria-label="窗口设置">
@@ -32,6 +33,15 @@ if (view !== 'controls') {
           <div class="slider-heading"><label class="field-label" for="opacity">不透明度</label><output id="opacity-value">100%</output></div>
           <input id="opacity" type="range" min="20" max="100" step="1" value="100" />
           <div class="range-labels"><span>更通透</span><span>完全不透明</span></div>
+          <div class="slider-heading"><label class="field-label" for="corner-radius">窗口圆角</label><output id="corner-radius-value">0 px</output></div>
+          <input id="corner-radius" type="range" min="0" max="32" step="1" value="0" />
+          <div class="range-labels"><span>直角</span><span>更圆润</span></div>
+          <p class="hint">实时预览 · 确认保存，取消恢复</p>
+          <div class="theme-field"><label class="field-label" for="accent-hex">主题色</label>
+            <div class="theme-editor"><input id="accent-picker" type="color" aria-label="选择主题色" value="#2563EB" /><input id="accent-hex" type="text" aria-label="主题色 HEX" pattern="#[0-9A-Fa-f]{6}" required maxlength="7" spellcheck="false" autocomplete="off" value="#2563EB" /><button id="accent-reset" type="button" class="text-button">恢复默认</button></div>
+            <div class="theme-swatches" role="group" aria-label="预设主题色">${['#2563EB', '#7C3AED', '#DB2777', '#DC2626', '#B45309', '#047857', '#000000', '#FFFFFF'].map(color => `<button type="button" class="theme-swatch" data-color="${color}" aria-label="主题色 ${color}" aria-pressed="false"></button>`).join('')}</div>
+            <p class="hint">浅色界面 · 仅在面板中预览，确认后应用</p>
+          </div>
           <label class="field-label shortcut-label" for="shortcut">显示 / 隐藏快捷键</label>
           <div class="shortcut-row"><input id="shortcut" readonly placeholder="点击后按下组合键" autocomplete="off" /><button id="clear-shortcut" type="button" class="text-button">清除</button></div>
           <p class="hint">全局生效 · 冲突时可通过托盘恢复窗口</p>
@@ -46,20 +56,23 @@ if (view !== 'controls') {
 
   const element = <T extends HTMLElement>(id: string) => document.getElementById(id) as T;
   const panel = element<HTMLElement>('panel');
-  const gear = element<HTMLButtonElement>('gear');
   const toolbar = element<HTMLElement>('toolbar');
   const url = element<HTMLInputElement>('url');
   const topmost = element<HTMLInputElement>('topmost');
   const pause = element<HTMLInputElement>('pause-media');
   const opacity = element<HTMLInputElement>('opacity');
+  const cornerRadius = element<HTMLInputElement>('corner-radius');
   const shortcut = element<HTMLInputElement>('shortcut');
   const notice = element<HTMLElement>('notice');
   const confirmation = element<HTMLElement>('clear-confirm');
+  const themeEditor = bindThemeEditor(panel);
   let settings: Settings | null = null;
   let editedUrl = false;
   let busy = false;
   let pendingOpacity: Promise<unknown> = Promise.resolve();
   let opacityScheduled = false;
+  let pendingCorners: Promise<unknown> = Promise.resolve();
+  let cornersScheduled = false;
 
   function report(error: unknown) {
     notice.textContent = String(error);
@@ -77,10 +90,13 @@ if (view !== 'controls') {
   }
   function open(snapshot: Snapshot) {
     settings = structuredClone(snapshot.settings);
+    themeEditor.open(settings);
     editedUrl = false;
     url.value = snapshot.currentUrl;
     topmost.checked = settings.alwaysOnTop;
     pause.checked = settings.pauseMediaOnHide;
+    cornerRadius.value = String(settings.cornerRadius);
+    element<HTMLOutputElement>('corner-radius-value').value = `${cornerRadius.value} px`;
     opacity.value = String(Math.round(settings.opacity * 100));
     element<HTMLOutputElement>('opacity-value').value = `${opacity.value}%`;
     shortcut.value = settings.shortcut ?? '';
@@ -94,6 +110,7 @@ if (view !== 'controls') {
     setTimeout(() => url.focus(), 60);
   }
   function close() {
+    themeEditor.close();
     panel.hidden = true;
     toolbar.hidden = false;
     document.body.classList.remove('panel-open');
@@ -102,10 +119,10 @@ if (view !== 'controls') {
   async function cancel() {
     if (busy) return;
     setBusy(true);
-    await pendingOpacity;
+    await Promise.all([pendingOpacity, pendingCorners]);
     try { await invoke('cancel_settings'); } catch (error) { setBusy(false); report(error); }
   }
-  bindToolbar(toolbar, gear, report);
+  bindToolbar(toolbar, report);
   url.addEventListener('input', () => { editedUrl = true; });
   opacity.addEventListener('input', () => {
     element<HTMLOutputElement>('opacity-value').value = `${opacity.value}%`;
@@ -114,6 +131,15 @@ if (view !== 'controls') {
     pendingOpacity = pendingOpacity.then(() => new Promise<void>((resolve) => requestAnimationFrame(() => {
       opacityScheduled = false;
       invoke('preview_opacity', { opacity: Number(opacity.value) / 100 }).catch(report).finally(resolve);
+    })));
+  });
+  cornerRadius.addEventListener('input', () => {
+    element<HTMLOutputElement>('corner-radius-value').value = `${cornerRadius.value} px`;
+    if (cornersScheduled) return;
+    cornersScheduled = true;
+    pendingCorners = pendingCorners.then(() => new Promise<void>(resolve => requestAnimationFrame(() => {
+      cornersScheduled = false;
+      invoke('preview_corner_radius', { radius: Number(cornerRadius.value) }).catch(report).finally(resolve);
     })));
   });
   shortcut.addEventListener('keydown', (event) => {
@@ -137,7 +163,7 @@ if (view !== 'controls') {
   element('clear-cache').addEventListener('click', () => { confirmation.hidden = false; });
   element('clear-no').addEventListener('click', () => { confirmation.hidden = true; });
   element('clear-yes').addEventListener('click', async () => {
-    await pendingOpacity;
+    await Promise.all([pendingOpacity, pendingCorners]);
     setBusy(true, '正在清理…');
     try { await invoke('clear_session'); } catch (error) { setBusy(false); report(error); }
   });
@@ -149,9 +175,10 @@ if (view !== 'controls') {
     event.preventDefault();
     if (!settings || busy) return;
     setBusy(true, '正在保存…');
-    await pendingOpacity;
+    await Promise.all([pendingOpacity, pendingCorners]);
     const draft: Settings = { ...settings, startupUrl: url.value, alwaysOnTop: topmost.checked,
-      opacity: Number(opacity.value) / 100, shortcut: shortcut.value || null, pauseMediaOnHide: pause.checked };
+      opacity: Number(opacity.value) / 100, shortcut: shortcut.value || null, pauseMediaOnHide: pause.checked,
+      accentColor: themeEditor.value(), cornerRadius: Number(cornerRadius.value) };
     try { await invoke('apply_settings', { settings: draft, urlEdited: editedUrl }); }
     catch (error) { setBusy(false); report(error); }
   });

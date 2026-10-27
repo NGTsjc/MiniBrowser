@@ -12,6 +12,7 @@ pub struct AppState {
     pub store: PortableStore,
     pub settings: Mutex<Settings>,
     pub effective_opacity: Mutex<f64>,
+    pub effective_corner_radius: Mutex<u32>,
     pub context_menu: Mutex<Option<(i32, i32)>>,
     pub session: Mutex<PathBuf>,
     pub browser_processes: Mutex<Vec<u32>>,
@@ -39,6 +40,7 @@ impl AppState {
         Self {
             store,
             effective_opacity: Mutex::new(settings.opacity),
+            effective_corner_radius: Mutex::new(settings.corner_radius),
             context_menu: Mutex::new(None),
             settings: Mutex::new(settings),
             session: Mutex::new(session),

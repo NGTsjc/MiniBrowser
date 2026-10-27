@@ -107,10 +107,30 @@ pub fn preview_opacity(caller: WebviewWindow, app: AppHandle, opacity: f64) -> R
 }
 
 #[tauri::command]
+pub fn preview_corner_radius(
+    caller: WebviewWindow,
+    app: AppHandle,
+    radius: u32,
+) -> Result<(), String> {
+    authorize(&caller)?;
+    if app.state::<AppState>().busy.load(Ordering::SeqCst) {
+        return Err("正在处理，请稍候".into());
+    }
+    crate::corners::preview(&app, radius)
+}
+
+#[tauri::command]
 pub fn cancel_settings(caller: WebviewWindow, app: AppHandle) -> Result<(), String> {
     authorize(&caller)?;
     let opacity = app.state::<AppState>().settings.lock().unwrap().opacity;
     windows::set_opacity(&app, opacity)?;
+    let radius = app
+        .state::<AppState>()
+        .settings
+        .lock()
+        .unwrap()
+        .corner_radius;
+    crate::corners::preview(&app, radius)?;
     windows::close_panel(&app)
 }
 
@@ -118,6 +138,9 @@ pub fn cancel_settings(caller: WebviewWindow, app: AppHandle) -> Result<(), Stri
 pub fn drag_window(caller: WebviewWindow, app: AppHandle) -> Result<(), String> {
     authorize(&caller)?;
     if let Some(browser) = app.get_webview_window("browser") {
+        if crate::corners::try_resize_from_drag(&app, &browser)? {
+            return Ok(());
+        }
         browser.start_dragging().map_err(|e| e.to_string())?;
     }
     Ok(())
@@ -205,6 +228,7 @@ fn apply_inner(app: &AppHandle, settings: &mut Settings, url_edited: bool) -> Re
         }
     }
     *state.settings.lock().unwrap() = settings.clone();
+    crate::theme::sync(app, &settings.accent_color);
     state.preserve_config.store(false, Ordering::SeqCst);
     *state.warning.lock().unwrap() = None;
     // Update existing documents and future top-level documents. The original

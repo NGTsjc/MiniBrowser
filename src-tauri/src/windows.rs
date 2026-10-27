@@ -49,6 +49,7 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
     let state = app.state::<AppState>();
     let settings = state.settings.lock().unwrap().clone();
     let session = state.session.lock().unwrap().clone();
+    *state.effective_corner_radius.lock().unwrap() = settings.corner_radius;
     #[cfg(debug_assertions)]
     let debug_port = 9223 + state.debug_generation.fetch_add(1, Ordering::SeqCst) * 2;
     let target = if url.is_empty() {
@@ -58,6 +59,7 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
     };
     let handle = app.clone();
     let new_handle = app.clone();
+    let new_session = session.clone();
     let download_handle = app.clone();
     let load_handle = app.clone();
     let script = include_str!("media.js").replace(
@@ -83,7 +85,10 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
         .data_directory(session.join("browser"))
         .incognito(true)
         .disable_drag_drop_handler()
+        .devtools(true)
+        .zoom_hotkeys_enabled(cfg!(windows))
         .initialization_script_for_all_frames(script)
+        .initialization_script(crate::theme::script(&settings.accent_color))
         .on_navigation(move |url| {
             let local = url.scheme() == "tauri"
                 || (matches!(url.host_str(), Some("tauri.localhost" | "127.0.0.1"))
@@ -98,21 +103,7 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
             allowed
         })
         .on_new_window(move |url, _features| {
-            if matches!(url.scheme(), "http" | "https") {
-                let handle = new_handle.clone();
-                let target = url.clone();
-                let _ = new_handle.run_on_main_thread(move || {
-                    if let Some(w) = handle.get_webview_window("browser") {
-                        let _ = w.navigate(target);
-                    }
-                });
-                notify(
-                    &new_handle,
-                    "新页面已转到当前窗口；依赖独立弹窗的登录流程暂不支持。",
-                );
-            } else {
-                notify(&new_handle, "已阻止外部协议或不支持的新窗口。");
-            }
+            crate::navigation::new_page(&new_handle, &new_session, &url);
             tauri::webview::NewWindowResponse::Deny
         })
         .on_download(move |_, event| {
@@ -122,6 +113,14 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
             false
         })
         .on_page_load(move |webview, payload| {
+            let accent = load_handle
+                .state::<AppState>()
+                .settings
+                .lock()
+                .unwrap()
+                .accent_color
+                .clone();
+            let _ = webview.eval(crate::theme::script(&accent));
             let url = payload.url().to_string();
             let _ = load_handle.emit_to("controls", "url-changed", url);
             let pause = load_handle
@@ -165,6 +164,7 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
     eprintln!("browser host: created");
     platform::set_opacity(&browser, settings.opacity)?;
     platform::secure_webview(&browser, app.clone())?;
+    crate::zoom::install(&browser, app)?;
     platform::track_process(&browser, app.clone())?;
     crate::bounds::install(&browser, app)?;
     crate::context_menu::install_browser(&browser, app)?;
@@ -175,7 +175,9 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
         WebviewUrl::App("index.html?view=controls".into()),
     )
     .title("MiniBrowser 设置")
-    .inner_size(76., 40.)
+    .devtools(false)
+    .zoom_hotkeys_enabled(false)
+    .inner_size(36., 40.)
     .decorations(false)
     .shadow(false)
     .resizable(false)
@@ -186,6 +188,7 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
     .always_on_top(settings.always_on_top)
     .data_directory(session.join("controls"))
     .incognito(true)
+    .initialization_script(crate::theme::script(&settings.accent_color))
     .parent(&browser)
     .map_err(|e| e.to_string())?
     .on_navigation(|url| {
@@ -209,6 +212,7 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
         controls_builder
     };
     let controls = controls_builder.build().map_err(|e| e.to_string())?;
+    crate::corners::install_controls(app, &controls)?;
     platform::track_process(&controls, app.clone())?;
     #[cfg(debug_assertions)]
     eprintln!("control host: created");
@@ -222,7 +226,9 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
             let _ = sync_controls(&handle);
         }
         WindowEvent::Resized(_) => {
-            let _ = sync_controls(&handle);
+            // Tauri rebuilds its rectangular resize border on WM_SIZE, even
+            // when a preceding move event already updated our geometry cache.
+            let _ = sync_controls_inner(&handle, true);
             lifecycle::save_size_later(&handle);
         }
         _ => {}
@@ -246,11 +252,16 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
     // Showing a Tao host can rebuild its extended styles; reapply native alpha
     // and tool-window flags after the first show/focus transition.
     set_opacity(app, settings.opacity)?;
+    crate::corners::sync(app, true)?;
     // The controls reveal themselves once their embedded UI has finished loading.
     Ok(())
 }
 
 pub fn sync_controls(app: &AppHandle) -> Result<(), String> {
+    sync_controls_inner(app, false)
+}
+
+fn sync_controls_inner(app: &AppHandle, force_corners: bool) -> Result<(), String> {
     let Some(browser) = app.get_webview_window("browser") else {
         return Ok(());
     };
@@ -259,7 +270,8 @@ pub fn sync_controls(app: &AppHandle) -> Result<(), String> {
     };
     if let Some((x, y, width, height)) = crate::context_menu::layout(app)? {
         platform::place_controls(&controls, x, y, width, height)?;
-        return platform::set_opacity(&controls, 1.);
+        platform::set_opacity(&controls, 1.)?;
+        return crate::corners::sync(app, force_corners);
     }
     let position = browser.inner_position().map_err(|e| e.to_string())?;
     let size = browser.inner_size().map_err(|e| e.to_string())?;
@@ -285,7 +297,7 @@ pub fn sync_controls(app: &AppHandle) -> Result<(), String> {
         (
             position.x,
             position.y,
-            (76. * scale) as u32,
+            (36. * scale) as u32,
             (40. * scale) as u32,
         )
     };
@@ -295,7 +307,8 @@ pub fn sync_controls(app: &AppHandle) -> Result<(), String> {
     } else {
         *app.state::<AppState>().effective_opacity.lock().unwrap()
     };
-    platform::set_opacity(&controls, opacity)
+    platform::set_opacity(&controls, opacity)?;
+    crate::corners::sync(app, force_corners)
 }
 
 pub fn open_panel(app: &AppHandle) -> Result<(), String> {
@@ -345,6 +358,7 @@ pub fn show(app: &AppHandle) -> Result<(), String> {
         }
         let opacity = *state.effective_opacity.lock().unwrap();
         set_opacity(app, opacity)?;
+        crate::corners::sync(app, true)?;
         update_visibility(app, true);
     }
     Ok(())
@@ -417,7 +431,8 @@ pub fn apply_window_settings(app: &AppHandle, settings: &Settings) -> Result<(),
             .set_always_on_top(settings.always_on_top)
             .map_err(|e| e.to_string())?;
     }
-    set_opacity(app, settings.opacity)
+    set_opacity(app, settings.opacity)?;
+    crate::corners::preview(app, settings.corner_radius)
 }
 
 pub fn restore(app: &AppHandle) -> Result<(), String> {

@@ -4,12 +4,16 @@ mod bounds;
 mod commands;
 mod config;
 mod context_menu;
+mod corners;
 mod lifecycle;
+mod navigation;
 mod platform;
 mod shortcuts;
 mod state;
+mod theme;
 mod tray;
 mod windows;
+mod zoom;
 
 use state::AppState;
 use std::sync::atomic::Ordering;
@@ -49,6 +53,7 @@ fn main() {
             commands::get_settings,
             commands::apply_settings,
             commands::preview_opacity,
+            commands::preview_corner_radius,
             commands::cancel_settings,
             commands::open_settings,
             commands::drag_window,
