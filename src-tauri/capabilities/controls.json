@@ -1,0 +1,16 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "controls",
+  "description": "Only the embedded control surface can manage the browser.",
+  "local": true,
+  "webviews": ["controls"],
+  "permissions": [
+    "core:event:allow-listen", "core:event:allow-unlisten",
+    "allow-get-settings", "allow-apply-settings", "allow-preview-opacity",
+    "allow-cancel-settings", "allow-open-settings", "allow-drag-window",
+    "allow-refresh-page", "allow-clear-session", "allow-close-app",
+    "allow-frontend-ready", "allow-show-window", "allow-hide-window", "allow-restart-app",
+    "allow-show-context-menu", "allow-restore-window",
+    "allow-dismiss-context-menu", "allow-context-menu-action"
+  ]
+}
