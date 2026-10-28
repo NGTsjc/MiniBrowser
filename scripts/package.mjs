@@ -8,6 +8,14 @@ assert.equal(binary.readUInt32LE(pe), 0x4550, 'Valid PE executable');
 assert.equal(binary.readUInt16LE(pe + 4), 0x8664, 'Windows x64 target');
 assert.equal(binary.readUInt16LE(pe + 24 + 68), 2, 'GUI subsystem, no console window');
 assert.equal(binary.includes(Buffer.from('MINIBROWSER_TEST_CDP')), false, 'No test CDP flag in release');
+const icon = await readFile('src-tauri/icons/icon.ico');
+assert.equal(icon.readUInt16LE(2), 1, 'Valid application ICO');
+for (let i = 0; i < icon.readUInt16LE(4); i++) {
+  const entry = 6 + i * 16;
+  const start = icon.readUInt32LE(entry + 12);
+  const size = icon.readUInt32LE(entry + 8);
+  assert.ok(binary.includes(icon.subarray(start, start + size)), 'Current application icon embedded in EXE; rebuild native resources if stale');
+}
 const optional = pe + 24;
 const sectionCount = binary.readUInt16LE(pe + 6);
 const sectionTable = optional + binary.readUInt16LE(pe + 20);

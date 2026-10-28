@@ -100,7 +100,7 @@ pub fn frontend_ready(caller: WebviewWindow, app: AppHandle) -> Result<(), Strin
 #[tauri::command]
 pub fn preview_opacity(caller: WebviewWindow, app: AppHandle, opacity: f64) -> Result<(), String> {
     authorize(&caller)?;
-    if !(0.2..=1.).contains(&opacity) {
+    if !(crate::parameters::MIN_OPACITY..=crate::parameters::MAX_OPACITY).contains(&opacity) {
         return Err("不透明度无效".into());
     }
     windows::set_opacity(&app, opacity)

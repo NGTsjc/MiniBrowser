@@ -31,8 +31,12 @@ export async function checkNewPages({ browser, controls, native, until, sleep, p
       const point = await browser.evaluate(`(()=>{const r=document.getElementById('popup-link').getBoundingClientRect();return {x:r.x+r.width/2,y:r.y+r.height/2}})()`);
       const modifiers = kind === 'ctrl-link' ? 2 : 0;
       const button = kind === 'middle-link' ? 'middle' : 'left';
-      await browser.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button, modifiers, clickCount: 1 });
-      await browser.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button, modifiers, clickCount: 1 });
+      if (kind === 'ctrl-link' || kind === 'middle-link') {
+        await native(kind === 'ctrl-link' ? 'ctrlClickPage' : 'middleClickPage', point);
+      } else {
+        await browser.send('Input.dispatchMouseEvent', { type: 'mousePressed', ...point, button, modifiers, clickCount: 1 });
+        await browser.send('Input.dispatchMouseEvent', { type: 'mouseReleased', ...point, button, modifiers, clickCount: 1 });
+      }
     } else {
       await browser.evaluate(`window.open(${JSON.stringify(url)}, ${kind.startsWith('named') ? "'reused-destination'" : "'_blank'"});true`);
     }

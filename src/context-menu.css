@@ -2,7 +2,7 @@
 body.context-menu-open { background: var(--surface); }
 .context-menu {
   width: 100%; height: 100vh; padding: 5px;
-  border: 1px solid var(--border); border-radius: 8px;
+  border: 1px solid var(--border); border-radius: var(--menu-radius);
   background: var(--surface);
   box-shadow: inset 0 1px 0 #FFFFFF; overflow: auto; scrollbar-width: none;
 }

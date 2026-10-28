@@ -9,6 +9,7 @@ import { copyFile, mkdir, readFile, writeFile, readdir, rmdir } from 'node:fs/pr
 import path from 'node:path';
 import { checkNewPages } from './new-page-checks.mjs';
 import { checkCornerPrototype, checkCornerSettings } from './corner-checks.mjs';
+import { checkControlLayout } from './control-layout-checks.mjs';
 import { checkPageZoom } from './zoom-checks.mjs';
 
 const root = path.resolve('.cache/smoke-portable', String(Date.now()));
@@ -216,6 +217,7 @@ try {
   passed('opacity preview does not commit preferences');
   await checkCornerPrototype({ browser, controls, native, passed, root });
   await checkCornerSettings({ controls, native, until, passed, root });
+  await checkControlLayout({ browser, controls, native, until, passed, root });
 
   const fixtureUrl = 'http://127.0.0.1:18765/';
   await controls.invoke('open_settings');
@@ -223,6 +225,7 @@ try {
   await controls.invoke('apply_settings', { settings, urlEdited: true });
   await until(() => browser.evaluate(`location.href === ${JSON.stringify(fixtureUrl)}`));
   assert.equal(await browser.evaluate(`window.__MINIBROWSER_ACCENT__`), undefined, 'Remote webpages receive no theme');
+  assert.equal(await browser.evaluate(`window.__MINIBROWSER_PARAMETERS__`), undefined, 'Remote webpages receive no application parameters');
   await browser.evaluate(`(()=>{
     const input=document.createElement('input');input.id='context-input';input.value='Copy this text';
     Object.assign(input.style,{position:'fixed',left:'20px',top:'20px',width:'200px',height:'30px',zIndex:'100'});

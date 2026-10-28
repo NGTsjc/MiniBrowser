@@ -107,7 +107,11 @@ pub fn set_opacity(window: &WebviewWindow, opacity: f64) -> Result<(), String> {
             if style != desired_style {
                 SetWindowLongPtrW(hwnd, GWL_EXSTYLE, desired_style);
             }
-            let desired_alpha = (opacity.clamp(0.2, 1.) * 255.).round() as u8;
+            let desired_alpha = (opacity.clamp(
+                crate::parameters::MIN_OPACITY,
+                crate::parameters::MAX_OPACITY,
+            ) * 255.)
+                .round() as u8;
             let mut alpha = 0;
             let mut flags = LAYERED_WINDOW_ATTRIBUTES_FLAGS(0);
             if GetLayeredWindowAttributes(hwnd, None, Some(&mut alpha), Some(&mut flags)).is_ok()

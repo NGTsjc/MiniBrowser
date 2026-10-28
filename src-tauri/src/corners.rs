@@ -1,5 +1,12 @@
 use tauri::{AppHandle, Manager};
 
+#[cfg(windows)]
+fn physical_resize_grip(scale: f64) -> i32 {
+    use windows::Win32::UI::{HiDpi::GetSystemMetricsForDpi, WindowsAndMessaging::SM_CXFRAME};
+    ((crate::parameters::RESIZE_GRIP * scale).round() as i32)
+        .max(unsafe { GetSystemMetricsForDpi(SM_CXFRAME, (scale * 96.).round() as u32) })
+}
+
 pub fn sync(app: &AppHandle, force: bool) -> Result<(), String> {
     #[cfg(windows)]
     {
@@ -42,14 +49,17 @@ pub fn sync(app: &AppHandle, force: bool) -> Result<(), String> {
 }
 
 pub fn preview(app: &AppHandle, radius: u32) -> Result<(), String> {
-    if radius > 32 {
-        return Err("窗口圆角必须在 0～32 之间".into());
+    if radius > crate::parameters::MAX_CORNER_RADIUS {
+        return Err(format!(
+            "窗口圆角必须在 0～{} 之间",
+            crate::parameters::MAX_CORNER_RADIUS
+        ));
     }
     let state = app.state::<crate::state::AppState>();
     let previous = std::mem::replace(&mut *state.effective_corner_radius.lock().unwrap(), radius);
-    if let Err(error) = sync(app, false) {
+    if let Err(error) = crate::windows::sync_controls(app) {
         *state.effective_corner_radius.lock().unwrap() = previous;
-        let _ = sync(app, true);
+        let _ = crate::windows::sync_controls(app);
         return Err(error);
     }
     Ok(())
@@ -175,8 +185,13 @@ pub fn resize_hit_test(
         y,
         rect.right - rect.left,
         rect.bottom - rect.top,
-        (radius as f64 * scale).round() as i32,
-        (6. * scale).round() as i32,
+        crate::control_layout::effective_radius(
+            radius,
+            rect.right - rect.left,
+            rect.bottom - rect.top,
+            scale,
+        ),
+        physical_resize_grip(scale),
     )
     .map(|hit| LRESULT(hit as isize))
 }
@@ -310,6 +325,16 @@ mod native {
             std::mem::forget(self);
             Ok(())
         }
+        fn polygon(points: &[[i32; 2]]) -> Result<Self, String> {
+            use windows::Win32::Foundation::POINT;
+            let points: Vec<POINT> = points.iter().map(|p| POINT { x: p[0], y: p[1] }).collect();
+            let region = unsafe { CreatePolygonRgn(&points, WINDING) };
+            if region.0.is_null() {
+                Err("无法创建圆弧拖动区域".into())
+            } else {
+                Ok(Self(region))
+            }
+        }
     }
 
     fn bounds(hwnd: HWND) -> Result<RECT, String> {
@@ -330,7 +355,7 @@ mod native {
             core::w,
             Win32::{
                 Foundation::*,
-                UI::{HiDpi::GetSystemMetricsForDpi, Shell::*, WindowsAndMessaging::*},
+                UI::{Shell::*, WindowsAndMessaging::*},
             },
         };
         unsafe extern "system" fn procedure(
@@ -379,9 +404,7 @@ mod native {
         let child_rect = bounds(child)?;
         let dx = child_rect.left - main_rect.left;
         let dy = child_rect.top - main_rect.top;
-        let dpi = (scale * 96.).round() as u32;
-        let grip =
-            ((6. * scale).round() as i32).max(unsafe { GetSystemMetricsForDpi(SM_CXFRAME, dpi) });
+        let grip = physical_resize_grip(scale);
         let outer = Region::new(geometry.width, geometry.height, geometry.radius)?;
         let inner = Region::new(
             (geometry.width - 2 * grip).max(1),
@@ -432,15 +455,20 @@ mod native {
             controls: overlay.0 as isize,
             width: rect.right - rect.left,
             height: rect.bottom - rect.top,
-            radius: (radius as f64 * scale).round() as i32,
+            radius: crate::control_layout::effective_radius(
+                radius,
+                rect.right - rect.left,
+                rect.bottom - rect.top,
+                scale,
+            ),
             dx: control.left - rect.left,
             dy: control.top - rect.top,
             control_width: control.right - control.left,
             control_height: control.bottom - control.top,
             overlay_radius: (if menu {
-                8.
+                crate::parameters::MENU_RADIUS
             } else if panel {
-                9.
+                crate::parameters::PANEL_RADIUS
             } else {
                 0.
             } * scale)
@@ -458,11 +486,16 @@ mod native {
             return Ok(());
         }
         let main_region = Region::new(geometry.width, geometry.height, geometry.radius)?;
-        let control_region = Region::new(
-            geometry.control_width,
-            geometry.control_height,
-            geometry.overlay_radius,
-        )?;
+        let drag = crate::windows::current_drag_shape(app);
+        let control_region = if !menu && !panel && drag.arc {
+            Region::polygon(&drag.points)?
+        } else {
+            Region::new(
+                geometry.control_width,
+                geometry.control_height,
+                geometry.overlay_radius,
+            )?
+        };
         if !menu {
             let parent = Region::new(geometry.width, geometry.height, geometry.radius)?;
             unsafe {

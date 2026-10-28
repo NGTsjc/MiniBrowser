@@ -1,10 +1,13 @@
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { bindToolbar } from './gear';
+import { bindToolbar, renderDragShape } from './gear';
 import { createContextMenu } from './context-menu';
-import type { Settings, Snapshot } from './types';
+import type { Settings, Snapshot, DragShape } from './types';
 import { bindThemeEditor, initializeTheme } from './theme';
 import './style.css';
+import { parameters, initializeParameters } from './parameters';
+
+initializeParameters();
 
 initializeTheme();
 
@@ -31,15 +34,15 @@ if (view !== 'controls') {
           <label class="setting-row" for="topmost"><span><strong>窗口置顶</strong><small>保持在其他窗口上方</small></span><input id="topmost" type="checkbox" class="switch" /></label>
           <label class="setting-row" for="pause-media"><span><strong>隐藏时暂停媒体</strong><small>再次显示后，手动继续播放</small></span><input id="pause-media" type="checkbox" class="switch" /></label>
           <div class="slider-heading"><label class="field-label" for="opacity">不透明度</label><output id="opacity-value">100%</output></div>
-          <input id="opacity" type="range" min="20" max="100" step="1" value="100" />
+          <input id="opacity" type="range" min="${parameters.limits.minOpacity * 100}" max="${parameters.limits.maxOpacity * 100}" step="1" value="${parameters.defaults.opacity * 100}" />
           <div class="range-labels"><span>更通透</span><span>完全不透明</span></div>
           <div class="slider-heading"><label class="field-label" for="corner-radius">窗口圆角</label><output id="corner-radius-value">0 px</output></div>
-          <input id="corner-radius" type="range" min="0" max="32" step="1" value="0" />
+          <input id="corner-radius" type="range" min="${parameters.limits.minCornerRadius}" max="${parameters.limits.maxCornerRadius}" step="${parameters.limits.cornerRadiusStep}" value="${parameters.defaults.cornerRadius}" />
           <div class="range-labels"><span>直角</span><span>更圆润</span></div>
           <p class="hint">实时预览 · 确认保存，取消恢复</p>
           <div class="theme-field"><label class="field-label" for="accent-hex">主题色</label>
-            <div class="theme-editor"><input id="accent-picker" type="color" aria-label="选择主题色" value="#2563EB" /><input id="accent-hex" type="text" aria-label="主题色 HEX" pattern="#[0-9A-Fa-f]{6}" required maxlength="7" spellcheck="false" autocomplete="off" value="#2563EB" /><button id="accent-reset" type="button" class="text-button">恢复默认</button></div>
-            <div class="theme-swatches" role="group" aria-label="预设主题色">${['#2563EB', '#7C3AED', '#DB2777', '#DC2626', '#B45309', '#047857', '#000000', '#FFFFFF'].map(color => `<button type="button" class="theme-swatch" data-color="${color}" aria-label="主题色 ${color}" aria-pressed="false"></button>`).join('')}</div>
+            <div class="theme-editor"><input id="accent-picker" type="color" aria-label="选择主题色" value="${parameters.defaults.accentColor}" /><input id="accent-hex" type="text" aria-label="主题色 HEX" pattern="#[0-9A-Fa-f]{6}" required maxlength="7" spellcheck="false" autocomplete="off" value="${parameters.defaults.accentColor}" /><button id="accent-reset" type="button" class="text-button">恢复默认</button></div>
+            <div class="theme-swatches" role="group" aria-label="预设主题色">${[parameters.defaults.accentColor, '#7C3AED', '#DB2777', '#DC2626', '#B45309', '#047857', '#000000', '#FFFFFF'].map(color => `<button type="button" class="theme-swatch" data-color="${color}" aria-label="主题色 ${color}" aria-pressed="false"></button>`).join('')}</div>
             <p class="hint">浅色界面 · 仅在面板中预览，确认后应用</p>
           </div>
           <label class="field-label shortcut-label" for="shortcut">显示 / 隐藏快捷键</label>
@@ -185,6 +188,9 @@ if (view !== 'controls') {
 
   async function initialize() {
     await contextMenu.initialize();
+    await listen<DragShape>('drag-shape-changed', event => renderDragShape(toolbar, event.payload));
+    const snapshot = await invoke<Snapshot>('get_settings');
+    renderDragShape(toolbar, snapshot.dragShape);
     await listen<Snapshot>('settings-open', (event) => open(event.payload));
     await listen('settings-close', close);
     await listen<string>('notice', (event) => report(event.payload));

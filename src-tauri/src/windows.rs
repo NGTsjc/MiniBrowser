@@ -1,4 +1,5 @@
 use crate::{config::Settings, lifecycle, platform, state::AppState};
+use crate::{control_layout as layout, parameters as p};
 use serde::Serialize;
 use std::sync::atomic::Ordering;
 use tauri::{
@@ -13,6 +14,8 @@ pub struct Snapshot {
     pub settings: Settings,
     pub current_url: String,
     pub warning: Option<String>,
+    pub parameters: serde_json::Value,
+    pub drag_shape: layout::DragShape,
 }
 
 pub fn snapshot(app: &AppHandle) -> Snapshot {
@@ -23,6 +26,8 @@ pub fn snapshot(app: &AppHandle) -> Snapshot {
         settings,
         current_url: current_url(app),
         warning,
+        parameters: p::public(),
+        drag_shape: current_drag_shape(app),
     }
 }
 
@@ -73,7 +78,7 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
     let browser_builder = WebviewWindowBuilder::new(app, "browser", target)
         .title("MiniBrowser")
         .inner_size(settings.width, settings.height)
-        .min_inner_size(280., 200.)
+        .min_inner_size(p::MIN_WIDTH, p::MIN_HEIGHT)
         .decorations(false)
         .shadow(false)
         .resizable(true)
@@ -88,6 +93,7 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
         .devtools(true)
         .zoom_hotkeys_enabled(cfg!(windows))
         .initialization_script_for_all_frames(script)
+        .initialization_script(p::script())
         .initialization_script(crate::theme::script(&settings.accent_color))
         .on_navigation(move |url| {
             let local = url.scheme() == "tauri"
@@ -177,7 +183,7 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
     .title("MiniBrowser 设置")
     .devtools(false)
     .zoom_hotkeys_enabled(false)
-    .inner_size(36., 40.)
+    .inner_size(p::DRAG_SIZE, p::DRAG_SIZE)
     .decorations(false)
     .shadow(false)
     .resizable(false)
@@ -188,6 +194,7 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
     .always_on_top(settings.always_on_top)
     .data_directory(session.join("controls"))
     .incognito(true)
+    .initialization_script(p::script())
     .initialization_script(crate::theme::script(&settings.accent_color))
     .parent(&browser)
     .map_err(|e| e.to_string())?
@@ -223,12 +230,16 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
             lifecycle::exit(&handle, false);
         }
         WindowEvent::Moved(_) | WindowEvent::ScaleFactorChanged { .. } => {
-            let _ = sync_controls(&handle);
+            if let Err(error) = sync_controls(&handle) {
+                notify(&handle, &error);
+            }
         }
         WindowEvent::Resized(_) => {
             // Tauri rebuilds its rectangular resize border on WM_SIZE, even
             // when a preceding move event already updated our geometry cache.
-            let _ = sync_controls_inner(&handle, true);
+            if let Err(error) = sync_controls_inner(&handle, true) {
+                notify(&handle, &error);
+            }
             lifecycle::save_size_later(&handle);
         }
         _ => {}
@@ -261,10 +272,63 @@ pub fn sync_controls(app: &AppHandle) -> Result<(), String> {
     sync_controls_inner(app, false)
 }
 
+pub fn current_radius(app: &AppHandle, width: i32, height: i32, scale: f64) -> i32 {
+    let requested = *app
+        .state::<AppState>()
+        .effective_corner_radius
+        .lock()
+        .unwrap();
+    layout::effective_radius(requested, width, height, scale)
+}
+
+pub fn current_drag_shape(app: &AppHandle) -> layout::DragShape {
+    let geometry = app
+        .get_webview_window("browser")
+        .and_then(|browser| {
+            let size = browser.inner_size().ok()?;
+            let scale = browser.scale_factor().ok()?;
+            Some((size.width as i32, size.height as i32, scale))
+        })
+        .unwrap_or((p::DEFAULT_WIDTH as i32, p::DEFAULT_HEIGHT as i32, 1.));
+    layout::drag_shape(
+        current_radius(app, geometry.0, geometry.1, geometry.2),
+        geometry.2,
+    )
+}
+
+fn publish_drag_shape(app: &AppHandle, shape: &layout::DragShape) {
+    let state = app.state::<AppState>();
+    let mut previous = state.drag_shape.lock().unwrap();
+    if previous.as_ref() != Some(shape) {
+        *previous = Some(shape.clone());
+        let _ = app.emit_to("controls", "drag-shape-changed", shape);
+    }
+}
+
 fn sync_controls_inner(app: &AppHandle, force_corners: bool) -> Result<(), String> {
     let Some(browser) = app.get_webview_window("browser") else {
         return Ok(());
     };
+    // Move, native region and renderer geometry form one UI-thread transaction.
+    #[cfg(windows)]
+    {
+        use windows::Win32::{
+            System::Threading::GetCurrentThreadId,
+            UI::WindowsAndMessaging::GetWindowThreadProcessId,
+        };
+        let hwnd = browser.hwnd().map_err(|e| e.to_string())?;
+        if unsafe { GetWindowThreadProcessId(hwnd, None) != GetCurrentThreadId() } {
+            let (send, receive) = std::sync::mpsc::sync_channel(1);
+            let handle = app.clone();
+            app.run_on_main_thread(move || {
+                let _ = send.send(sync_controls_inner(&handle, force_corners));
+            })
+            .map_err(|e| e.to_string())?;
+            return receive
+                .recv_timeout(std::time::Duration::from_secs(5))
+                .map_err(|_| "同步窗口控制区域超时".to_string())?;
+        }
+    }
     let Some(controls) = app.get_webview_window("controls") else {
         return Ok(());
     };
@@ -277,16 +341,18 @@ fn sync_controls_inner(app: &AppHandle, force_corners: bool) -> Result<(), Strin
     let size = browser.inner_size().map_err(|e| e.to_string())?;
     let scale = browser.scale_factor().map_err(|e| e.to_string())?;
     let open = app.state::<AppState>().panel_open.load(Ordering::SeqCst);
-    let padding = (8. * scale).round() as i32;
+    let shape = current_drag_shape(app);
+    let radius = current_radius(app, size.width as i32, size.height as i32, scale);
+    let padding = layout::panel_inset(radius, scale);
     let (x, y, width, height) = if open {
         let width = size
             .width
-            .saturating_sub(2 * padding as u32)
-            .min((400. * scale) as u32);
+            .saturating_sub(2 * padding)
+            .min((p::PANEL_WIDTH * scale) as u32);
         let height = size
             .height
-            .saturating_sub(2 * padding as u32)
-            .min((620. * scale) as u32);
+            .saturating_sub(2 * padding)
+            .min((p::PANEL_HEIGHT * scale) as u32);
         (
             position.x + ((size.width - width) / 2) as i32,
             position.y + ((size.height - height) / 2) as i32,
@@ -295,10 +361,10 @@ fn sync_controls_inner(app: &AppHandle, force_corners: bool) -> Result<(), Strin
         )
     } else {
         (
-            position.x,
-            position.y,
-            (36. * scale) as u32,
-            (40. * scale) as u32,
+            position.x + shape.x,
+            position.y + shape.y,
+            shape.width,
+            shape.height,
         )
     };
     platform::place_controls(&controls, x, y, width, height)?;
@@ -308,7 +374,9 @@ fn sync_controls_inner(app: &AppHandle, force_corners: bool) -> Result<(), Strin
         *app.state::<AppState>().effective_opacity.lock().unwrap()
     };
     platform::set_opacity(&controls, opacity)?;
-    crate::corners::sync(app, force_corners)
+    crate::corners::sync(app, force_corners)?;
+    publish_drag_shape(app, &shape);
+    Ok(())
 }
 
 pub fn open_panel(app: &AppHandle) -> Result<(), String> {

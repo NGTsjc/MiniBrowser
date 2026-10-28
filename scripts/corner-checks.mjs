@@ -62,7 +62,7 @@ export async function checkCornerPrototype({ browser, controls, native, passed, 
   assert.deepEqual(overlay(await native()).cornersInside, Array(4).fill(false));
   await controls.invoke('dismiss_context_menu');
   await controls.invoke('preview_corner_radius', { radius: 0 });
-  await assert.rejects(() => controls.invoke('preview_corner_radius', { radius: 33 }));
+  await assert.rejects(() => controls.invoke('preview_corner_radius', { radius: 129 }));
   passed('native corner prototype clips browser, drag grip and popups with media, alpha and click-through corners');
 }
 

@@ -1,3 +1,4 @@
+use crate::parameters as p;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::{
@@ -24,18 +25,7 @@ pub struct Settings {
 
 impl Default for Settings {
     fn default() -> Self {
-        Self {
-            version: 1,
-            startup_url: String::new(),
-            width: 960.,
-            height: 600.,
-            always_on_top: false,
-            opacity: 1.,
-            shortcut: None,
-            pause_media_on_hide: true,
-            accent_color: "#2563EB".into(),
-            corner_radius: 0,
-        }
+        crate::parameters::defaults()
     }
 }
 
@@ -68,22 +58,26 @@ pub fn normalize_url(input: &str) -> Result<String, String> {
 
 impl Settings {
     pub fn validate(&mut self) -> Result<(), String> {
-        if self.corner_radius > 32 {
-            return Err("窗口圆角必须在 0～32 之间".into());
+        if self.corner_radius > p::MAX_CORNER_RADIUS {
+            return Err(format!("窗口圆角必须在 0～{} 之间", p::MAX_CORNER_RADIUS));
         }
         if !valid_accent(&self.accent_color) {
             return Err("主题色必须为 #RRGGBB 格式".into());
         }
         self.accent_color.make_ascii_uppercase();
-        self.version = 1;
+        self.version = p::CONFIG_VERSION;
         self.startup_url = normalize_url(&self.startup_url)?;
-        if !self.opacity.is_finite() || !(0.2..=1.).contains(&self.opacity) {
-            return Err("不透明度必须在 20%～100% 之间".into());
+        if !self.opacity.is_finite() || !(p::MIN_OPACITY..=p::MAX_OPACITY).contains(&self.opacity) {
+            return Err(format!(
+                "不透明度必须在 {}%～{}% 之间",
+                p::MIN_OPACITY * 100.,
+                p::MAX_OPACITY * 100.
+            ));
         }
         if !self.width.is_finite()
             || !self.height.is_finite()
-            || !(280.0..=16384.).contains(&self.width)
-            || !(200.0..=16384.).contains(&self.height)
+            || !(p::MIN_WIDTH..=p::MAX_SIZE).contains(&self.width)
+            || !(p::MIN_HEIGHT..=p::MAX_SIZE).contains(&self.height)
         {
             return Err("窗口尺寸无效".into());
         }
@@ -141,7 +135,7 @@ impl PortableStore {
         if value
             .get("version")
             .and_then(Value::as_u64)
-            .is_some_and(|v| v != 1)
+            .is_some_and(|v| v != p::CONFIG_VERSION as u64)
         {
             return fallback("配置版本不受支持，已使用默认值；确认设置前将保留原文件。");
         }
@@ -162,17 +156,18 @@ impl PortableStore {
         });
         settings.startup_url = normalize_url(&settings.startup_url).unwrap_or_default();
         read!("width", width, f64, |v: &f64| v.is_finite()
-            && (280.0..=16384.).contains(v));
+            && (p::MIN_WIDTH..=p::MAX_SIZE).contains(v));
         read!("height", height, f64, |v: &f64| v.is_finite()
-            && (200.0..=16384.).contains(v));
+            && (p::MIN_HEIGHT..=p::MAX_SIZE).contains(v));
         read!("opacity", opacity, f64, |v: &f64| v.is_finite()
-            && (0.2..=1.).contains(v));
+            && (p::MIN_OPACITY..=p::MAX_OPACITY).contains(v));
         read!("alwaysOnTop", always_on_top, bool, |_: &bool| true);
         read!("accentColor", accent_color, String, |v: &String| {
             valid_accent(v)
         });
         settings.accent_color.make_ascii_uppercase();
-        read!("cornerRadius", corner_radius, u32, |v: &u32| *v <= 32);
+        read!("cornerRadius", corner_radius, u32, |v: &u32| *v
+            <= p::MAX_CORNER_RADIUS);
         read!("pauseMediaOnHide", pause_media_on_hide, bool, |_: &bool| {
             true
         });
@@ -385,7 +380,7 @@ mod tests {
         assert!(!store.load().preserve_file);
         for value in [
             serde_json::json!(-1),
-            serde_json::json!(33),
+            serde_json::json!(p::MAX_CORNER_RADIUS + 1),
             serde_json::json!(1.5),
             serde_json::json!("12"),
         ] {
@@ -399,7 +394,7 @@ mod tests {
             assert_eq!(loaded.settings.width, 700.);
             assert!(loaded.preserve_file);
         }
-        for radius in [0, 12, 32] {
+        for radius in [0, 12, 32, 64, p::MAX_CORNER_RADIUS] {
             let mut settings = Settings {
                 corner_radius: radius,
                 ..Settings::default()
@@ -409,7 +404,7 @@ mod tests {
             assert_eq!(store.load().settings.corner_radius, radius);
         }
         let mut invalid = Settings {
-            corner_radius: 33,
+            corner_radius: p::MAX_CORNER_RADIUS + 1,
             ..Settings::default()
         };
         assert!(invalid.validate().is_err());

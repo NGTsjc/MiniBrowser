@@ -1,6 +1,7 @@
 import type { Settings } from './types';
+import { parameters } from './parameters';
 
-export const DEFAULT_ACCENT = '#2563EB';
+export const DEFAULT_ACCENT = parameters.defaults.accentColor;
 export const validAccent = (value: string) => /^#[0-9a-f]{6}$/i.test(value);
 
 function luminance(rgb: number[]) {

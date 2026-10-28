@@ -1,3 +1,4 @@
+use crate::parameters as p;
 use crate::{lifecycle, platform, state::AppState, windows};
 use std::sync::atomic::Ordering;
 use tauri::{AppHandle, Emitter, Manager};
@@ -58,8 +59,8 @@ pub fn layout(app: &AppHandle) -> Result<Option<(i32, i32, u32, u32)>, String> {
     if let Some(monitor) = monitor {
         let scale = monitor.scale_factor();
         let area = monitor.work_area();
-        let width = ((224. * scale).round() as u32).min(area.size.width);
-        let height = ((281. * scale).round() as u32).min(area.size.height);
+        let width = ((p::MENU_WIDTH * scale).round() as u32).min(area.size.width);
+        let height = ((p::MENU_HEIGHT * scale).round() as u32).min(area.size.height);
         let x = x.clamp(
             area.position.x,
             area.position.x + area.size.width.saturating_sub(width) as i32,
@@ -70,7 +71,7 @@ pub fn layout(app: &AppHandle) -> Result<Option<(i32, i32, u32, u32)>, String> {
         );
         Ok(Some((x, y, width, height)))
     } else {
-        Ok(Some((x, y, 224, 281)))
+        Ok(Some((x, y, p::MENU_WIDTH as u32, p::MENU_HEIGHT as u32)))
     }
 }
 

@@ -108,7 +108,7 @@ pub fn save_size(app: &AppHandle) {
     let state = app.state::<AppState>();
     if let Some((width, height)) = windows::current_size(app) {
         let mut settings = state.settings.lock().unwrap();
-        if width < 280. || height < 200. {
+        if width < crate::parameters::MIN_WIDTH || height < crate::parameters::MIN_HEIGHT {
             return;
         }
         settings.width = width;

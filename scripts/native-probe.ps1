@@ -4,7 +4,7 @@ param(
     [int]$ClickX=100,
     [int]$ClickY=35,
     [ValidateRange(1,8)][int]$WheelTicks=1,
-    [ValidateSet('inspect','clickGear','dragToolbar','resize','edgeResize','hotkey','close','moveBeyond','releaseBounds','inspectMenu','dismissMenu','menuRefresh','menuHide','menuRestore','menuClose','menuRestart','clickOutsideMenu','inspectDevtools','closeDevtools','rightClickPage','clickPage','openTrayMenu','trayReset','captureWindow','minimumResize','cornerResizeTL','cornerResizeTR','cornerResizeBL','cornerResizeBR','inspectChildren','zoomIn','zoomOut','zoomReset','zoomPlus','zoomMinus','zoomControl','scrollPage')][string]$Action='inspect'
+    [ValidateSet('inspect','clickGear','dragToolbar','resize','edgeResize','hotkey','close','moveBeyond','releaseBounds','inspectMenu','dismissMenu','menuRefresh','menuHide','menuRestore','menuClose','menuRestart','clickOutsideMenu','inspectDevtools','closeDevtools','rightClickPage','rightClickControl','ctrlClickPage','middleClickPage','clickPage','openTrayMenu','trayReset','captureWindow','minimumResize','cornerResizeTL','cornerResizeTR','cornerResizeBL','cornerResizeBR','inspectChildren','zoomIn','zoomOut','zoomReset','zoomPlus','zoomMinus','zoomControl','scrollPage')][string]$Action='inspect'
 )
 $ErrorActionPreference='Stop'
 [Console]::OutputEncoding=[System.Text.Encoding]::UTF8
@@ -212,15 +212,24 @@ if ($Action -like 'zoom*' -or $Action -eq 'scrollPage') {
         if ([MiniProbe]::FindPopup($AppProcessId) -ne [IntPtr]::Zero) { break }
         [System.Threading.Thread]::Sleep(50)
     }
-} elseif ($Action -in @('rightClickPage','clickPage')) {
+} elseif ($Action -in @('rightClickPage','rightClickControl','ctrlClickPage','middleClickPage','clickPage')) {
     $rect=New-Object MiniProbe+RECT
-    [void][MiniProbe]::GetWindowRect($browser,[ref]$rect)
+    $targetWindow=if($Action -eq 'rightClickControl'){$controls}else{$browser}
+    [void][MiniProbe]::GetWindowRect($targetWindow,[ref]$rect)
     $scale=[MiniProbe]::GetDpiForWindow($browser)/96.0
     [void][MiniProbe]::SetCursorPos([int]($rect.Left+$ClickX*$scale),[int]($rect.Top+$ClickY*$scale))
     [System.Threading.Thread]::Sleep(120)
-    [MiniProbe]::mouse_event($(if($Action -eq 'clickPage'){2}else{8}),0,0,0,[UIntPtr]::Zero)
-    [System.Threading.Thread]::Sleep(60)
-    [MiniProbe]::mouse_event($(if($Action -eq 'clickPage'){4}else{16}),0,0,0,[UIntPtr]::Zero)
+    [void][MiniProbe]::SetForegroundWindow($targetWindow)
+    if($Action -eq 'ctrlClickPage'){[MiniProbe]::keybd_event(0x11,0,0,[UIntPtr]::Zero);[System.Threading.Thread]::Sleep(80)}
+    $down=if($Action -eq 'middleClickPage'){32}elseif($Action -in @('clickPage','ctrlClickPage')){2}else{8}
+    $up=if($Action -eq 'middleClickPage'){64}elseif($Action -in @('clickPage','ctrlClickPage')){4}else{16}
+    try {
+        [MiniProbe]::mouse_event($down,0,0,0,[UIntPtr]::Zero)
+        [System.Threading.Thread]::Sleep(80)
+    } finally {
+        [MiniProbe]::mouse_event($up,0,0,0,[UIntPtr]::Zero)
+        if($Action -eq 'ctrlClickPage'){[MiniProbe]::keybd_event(0x11,0,2,[UIntPtr]::Zero)}
+    }
 } elseif ($Action -eq 'clickOutsideMenu') {
     $mainRect=New-Object MiniProbe+RECT
     $menuRect=New-Object MiniProbe+RECT
@@ -285,14 +294,15 @@ if ($Action -like 'zoom*' -or $Action -eq 'scrollPage') {
     $x=$rect.Left+($rect.Right-$rect.Left)/2
     $y=$rect.Top+($rect.Bottom-$rect.Top)/2
     $scale=[MiniProbe]::GetDpiForWindow($browser)/96.0
-    if ($Action -eq 'dragToolbar') { $x=$rect.Left+18*$scale }
+    if ($Action -eq 'dragToolbar' -and $PSBoundParameters.ContainsKey('ClickX')) { $x=$rect.Left+$ClickX*$scale; $y=$rect.Top+$ClickY*$scale }
     if ($Action -eq 'clickGear') { $x=$rect.Left+20*$scale }
     if ($Action -eq 'edgeResize') { $x=$rect.Right-2 }
     $moveX=65; $moveY=45
     if ($Action -like 'cornerResize*') {
         $leftCorner=$Action.EndsWith('L'); $topCorner=$Action.EndsWith('TL') -or $Action.EndsWith('TR')
-        $x=if($leftCorner){$rect.Left+12*$scale}else{$rect.Right-12*$scale}
-        $y=if($topCorner){$rect.Top+12*$scale}else{$rect.Bottom-12*$scale}
+        $resizeInset=if($PSBoundParameters.ContainsKey('ClickX')){$ClickX}else{12}
+        $x=if($leftCorner){$rect.Left+$resizeInset*$scale}else{$rect.Right-$resizeInset*$scale}
+        $y=if($topCorner){$rect.Top+$resizeInset*$scale}else{$rect.Bottom-$resizeInset*$scale}
         if($leftCorner){$moveX=-65}; if($topCorner){$moveY=-45}
     }
     try {
@@ -347,6 +357,11 @@ foreach($entry in $hosts.GetEnumerator()) {
         $cornerWindow=[MiniProbe]::GetAncestor($cornerWindow,2)
         $output[$entry.Key].cornerHitsApp=($cornerWindow -eq $browser -or $cornerWindow -eq $controls)
         $output[$entry.Key].scale=[MiniProbe]::GetDpiForWindow($entry.Value)/96.0
+        $sampleX=[int]($ClickX*$output[$entry.Key].scale); $sampleY=[int]($ClickY*$output[$entry.Key].scale)
+        $output[$entry.Key].sampleInside=[MiniProbe]::PtInRegion($region,$sampleX,$sampleY)
+        $samplePoint=New-Object MiniProbe+POINT; $samplePoint.X=$rect.Left+$sampleX; $samplePoint.Y=$rect.Top+$sampleY
+        $sampleWindow=[MiniProbe]::GetAncestor([MiniProbe]::WindowFromPoint($samplePoint),2)
+        $output[$entry.Key].sampleHitsControl=($sampleWindow -eq $controls)
     } finally { [void][MiniProbe]::DeleteObject($region) }
 }
 $output | ConvertTo-Json -Compress
