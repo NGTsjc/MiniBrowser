@@ -189,8 +189,18 @@ pub fn mute(app: &AppHandle, muted: bool) {
 
 pub fn track_process(window: &WebviewWindow, app: AppHandle) -> Result<(), String> {
     #[cfg(windows)]
+    let session = app
+        .state::<crate::state::AppState>()
+        .session
+        .lock()
+        .unwrap()
+        .clone();
+    #[cfg(windows)]
     window
         .with_webview(move |webview| unsafe {
+            if !crate::operation::is_current_session(&app, &session) {
+                return;
+            }
             if let Ok(core) = webview.controller().CoreWebView2() {
                 let mut id = 0;
                 if core.BrowserProcessId(&mut id).is_ok() && id != 0 {
@@ -252,6 +262,13 @@ pub fn wait_for_browsers(processes: &[u32]) -> bool {
 
 pub fn secure_webview(browser: &WebviewWindow, app: AppHandle) -> Result<(), String> {
     #[cfg(windows)]
+    let session = app
+        .state::<crate::state::AppState>()
+        .session
+        .lock()
+        .unwrap()
+        .clone();
+    #[cfg(windows)]
     browser
         .with_webview(move |webview| unsafe {
             use webview2_com::{
@@ -262,7 +279,12 @@ pub fn secure_webview(browser: &WebviewWindow, app: AppHandle) -> Result<(), Str
                     if let Some(args) = args {
                         args.SetState(COREWEBVIEW2_PERMISSION_STATE_DENY)?;
                     }
-                    crate::windows::notify(&app, "首版暂不支持摄像头、麦克风、定位等网站权限。");
+                    if crate::operation::is_current_session(&app, &session) {
+                        crate::windows::notify(
+                            &app,
+                            "首版暂不支持摄像头、麦克风、定位等网站权限。",
+                        );
+                    }
                     Ok(())
                 }));
                 let mut token = 0;

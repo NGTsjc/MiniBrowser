@@ -2,6 +2,22 @@
 use crate::parameters as p;
 use serde::Serialize;
 use std::f64::consts::{FRAC_PI_4, PI};
+use std::sync::Arc;
+
+#[derive(Default)]
+pub struct Cache(Option<(i32, u64, Arc<DragShape>)>);
+impl Cache {
+    pub fn get(&mut self, radius: i32, scale: f64) -> Arc<DragShape> {
+        if let Some((r, s, shape)) = &self.0 {
+            if *r == radius && *s == scale.to_bits() {
+                return shape.clone();
+            }
+        }
+        let shape = Arc::new(drag_shape(radius, scale));
+        self.0 = Some((radius, scale.to_bits(), shape.clone()));
+        shape
+    }
+}
 
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -101,6 +117,16 @@ pub fn drag_shape(radius: i32, scale: f64) -> DragShape {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn geometry_is_reused_until_effective_radius_or_dpi_changes() {
+        let mut cache = Cache::default();
+        let first = cache.get(128, 1.5);
+        for _ in 0..100 {
+            assert!(Arc::ptr_eq(&first, &cache.get(128, 1.5)));
+        }
+        assert!(!Arc::ptr_eq(&first, &cache.get(100, 1.5)));
+        assert!(!Arc::ptr_eq(&first, &cache.get(128, 2.)));
+    }
     fn inside(x: f64, y: f64, w: f64, h: f64, r: f64) -> bool {
         let dx = (r - x.min(w - x)).max(0.);
         let dy = (r - y.min(h - y)).max(0.);

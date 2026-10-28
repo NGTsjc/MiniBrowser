@@ -17,7 +17,7 @@ try {
   let inspected;
   for (let i = 0; i < 30; i++) {
     try {
-      const { stdout } = await execute('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('scripts/native-probe.ps1'), '-AppProcessId', String(app.pid)], { windowsHide: true, encoding: 'utf8' });
+      const { stdout } = await execute('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('scripts/tests/native-probe.ps1'), '-AppProcessId', String(app.pid)], { windowsHide: true, encoding: 'utf8' });
       inspected = JSON.parse(stdout.replace(/^\uFEFF/, '').trim());
       if (inspected.MiniBrowser.visible) break;
     } catch {}
@@ -29,7 +29,7 @@ try {
   const sessions = await readdir(path.join(root, 'MiniBrowser.data/sessions'));
   assert.equal(sessions.length, 1, 'Data is beside actual EXE, not the working directory');
   const probe = async action => {
-    const { stdout } = await execute('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('scripts/native-probe.ps1'), '-AppProcessId', String(app.pid), '-Action', action], { windowsHide: true, encoding: 'utf8' });
+    const { stdout } = await execute('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('scripts/tests/native-probe.ps1'), '-AppProcessId', String(app.pid), '-Action', action], { windowsHide: true, encoding: 'utf8' });
     return JSON.parse(stdout.replace(/^\uFEFF/, '').trim());
   };
   assert.equal((await probe('hotkey')).MiniBrowser.visible, false);
@@ -37,7 +37,7 @@ try {
   assert.equal(restored.visible, true);
   assert.equal(restored.alpha, 179, 'Saved opacity survives hide/show');
   assert.ok((restored.extendedStyle & 0x80) !== 0);
-  await execute('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('scripts/native-probe.ps1'), '-AppProcessId', String(app.pid), '-Action', 'close'], { windowsHide: true, encoding: 'utf8' });
+  await execute('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('scripts/tests/native-probe.ps1'), '-AppProcessId', String(app.pid), '-Action', 'close'], { windowsHide: true, encoding: 'utf8' });
   for (let i = 0; i < 100 && app.exitCode === null; i++) await sleep(100);
   assert.equal(app.exitCode, 0, 'Native close exits normally');
   console.log('PASS release GUI launch, native styles, EXE-relative storage, native close');

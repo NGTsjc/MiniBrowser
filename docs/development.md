@@ -23,15 +23,25 @@ pnpm dev
 | `pnpm check` | TypeScript 类型检查 |
 | `pnpm build:ui` | 类型检查并构建前端到 `dist/` |
 | `pnpm test:native` | Rust 单元测试 |
+| `pnpm test:unit` | 版本脚本与预览调度单元测试 |
+| `pnpm test:maintenance` | 维护专项原生故障／竞争检查，先运行 `build:debug` |
+| `pnpm test:performance` | 三轮隔离性能采样，先运行 `build:debug`，结果保存在 `.cache/maintenance-performance/` |
 | `cargo fmt --manifest-path src-tauri/Cargo.toml` | 格式化 Rust |
 | `cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings` | Rust 静态检查 |
 | `pnpm build:debug` | 构建嵌入前端资源的调试 EXE，供集成测试使用 |
 | `pnpm test:smoke` | 真实 WebView2 集成检查，需要先构建调试版 |
 | `pnpm build` | 构建、检查并打包便携 EXE，生成 SHA256 文件 |
 | `pnpm test:release` | 检查已打包 EXE 的原生启动、样式、快捷键与关闭 |
+| `pnpm version:set 0.2.0` | 同步 Node、Tauri、Cargo 及 Cargo 锁文件中的应用版本，依赖版本不变 |
+| `node scripts/sync-version.mjs --check` | 检查四处应用版本一致，不修改文件 |
+| `node --test scripts/tests/sync-version.test.mjs` | 检查版本同步与非法标签处理 |
 | `git diff --check` | 检查补丁空白问题 |
 
 集成测试会操作真实桌面和鼠标，请等待结束后再使用键鼠，避免并行运行其他原生界面测试。调试测试使用独立实例标识，结果和截图保存在 `.cache/smoke-portable/<时间戳>/`。发布版测试前先关闭正在运行的正式应用，避免单实例机制影响结果。
+
+维护专项结果保存在 `.cache/maintenance-checks/`。性能对比可用 `pnpm test:performance <调试EXE路径> <标签>` 指定修复前后版本，保持同一环境且串行运行。测试故障文件只在隔离调试实例中生效；实测数据以对应 `.cache/` 报告为准。
+
+`scripts/` 各文件用途、自动化测试技术、入口与子模块关系、运行顺序及 CI 覆盖范围见 [脚本与测试索引](../scripts/README.md)。
 
 ## 常见修改位置
 
@@ -65,11 +75,44 @@ pnpm build
 
 ## 发布流程
 
+### GitHub 自动构建与发布
+
+仓库仅使用 GitHub，远程名为 `origin`，主分支为 `main`，无需 Gitee 或额外的 GitHub remote。
+
+```powershell
+# 日常提交：推送后自动检查并构建
+git add .
+git commit -m "描述本次修改"
+git push origin main
+```
+
+- 推送 `main`、提交 PR 或手动运行 **Check and Build**：Windows x64 上检查版本、前端、Rust 格式／Clippy／单元测试，并构建 EXE。Actions 页面可下载 EXE 与 SHA256，保留 14 天。
+- 推送 `v*` 标签：运行 **Build and Release**，检查通过后创建 GitHub Release，提供独立 EXE、EXE 校验文件、`MiniBrowser_<版本>_win64.zip` 及 ZIP 校验文件。ZIP 仅包含 EXE 和对应校验文件。
+- CI 使用 Node.js 24、`packageManager` 指定的 pnpm 和 Rust 1.96.0，并缓存依赖；安装和 Rust 构建均使用锁文件。依赖真实桌面输入的 `test:smoke`／`test:release` 保留本地运行，不作为云端已完成的原生验收。
+
+发布新版本时，用以下流程即可；示例版本替换为未发布的新版本：
+
+```powershell
+pnpm version:set 0.2.0
+git add .
+git commit -m "Release v0.2.0"
+git tag v0.2.0
+git push origin main v0.2.0
+```
+
+标签指向的提交决定发布内容。CI 也会在构建工作区按标签同步四处版本，不回写提交；`v0.2.0-rc.1` 等标签标记为预发布。版本必须符合 SemVer，前三段不超过 65535。已发布标签不要覆盖，修正代码后使用新版本。只推送 `main` 不会创建 Release。
+
+无需新增个人令牌，发布使用工作流的 `GITHUB_TOKEN` 与 `contents: write` 权限；仓库须允许运行 Actions。工作流位于 `.github/workflows/`，公共工具链安装步骤位于 `.github/actions/setup/`。
+
+### 本地构建与验收
+
 ```powershell
 pnpm check
+pnpm test:unit
 pnpm test:native
 pnpm build:debug
 pnpm test:smoke
+pnpm test:maintenance
 pnpm build
 pnpm test:release
 ```

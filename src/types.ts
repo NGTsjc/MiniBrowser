@@ -17,6 +17,14 @@ export interface Snapshot {
   warning: string | null;
   parameters: Parameters;
   dragShape: DragShape;
+  previewEpoch: number;
+}
+
+export interface ApplyOutcome {
+  settings: Settings;
+  warnings: string[];
+  navigationFailed: boolean;
+  previewEpoch: number;
 }
 
 export interface Parameters {

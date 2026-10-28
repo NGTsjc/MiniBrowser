@@ -16,6 +16,7 @@ pub struct Snapshot {
     pub warning: Option<String>,
     pub parameters: serde_json::Value,
     pub drag_shape: layout::DragShape,
+    pub preview_epoch: u64,
 }
 
 pub fn snapshot(app: &AppHandle) -> Snapshot {
@@ -28,6 +29,7 @@ pub fn snapshot(app: &AppHandle) -> Snapshot {
         warning,
         parameters: p::public(),
         drag_shape: current_drag_shape(app),
+        preview_epoch: state.preview_epoch.load(Ordering::SeqCst),
     }
 }
 
@@ -55,6 +57,11 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
     let settings = state.settings.lock().unwrap().clone();
     let session = state.session.lock().unwrap().clone();
     *state.effective_corner_radius.lock().unwrap() = settings.corner_radius;
+    state.visible.store(true, Ordering::SeqCst);
+    state.controls_ready.store(false, Ordering::SeqCst);
+    state.panel_open.store(false, Ordering::SeqCst);
+    *state.context_menu.lock().unwrap() = None;
+
     #[cfg(debug_assertions)]
     let debug_port = 9223 + state.debug_generation.fetch_add(1, Ordering::SeqCst) * 2;
     let target = if url.is_empty() {
@@ -63,10 +70,13 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
         WebviewUrl::External(url.parse().map_err(|e: url::ParseError| e.to_string())?)
     };
     let handle = app.clone();
+    let navigation_session = session.clone();
     let new_handle = app.clone();
     let new_session = session.clone();
     let download_handle = app.clone();
+    let download_session = session.clone();
     let load_handle = app.clone();
+    let load_session = session.clone();
     let script = include_str!("media.js").replace(
         "__PAUSE_ON_HIDE__",
         if settings.pause_media_on_hide {
@@ -96,6 +106,9 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
         .initialization_script(p::script())
         .initialization_script(crate::theme::script(&settings.accent_color))
         .on_navigation(move |url| {
+            if !crate::operation::is_current_session(&handle, &navigation_session) {
+                return false;
+            }
             let local = url.scheme() == "tauri"
                 || (matches!(url.host_str(), Some("tauri.localhost" | "127.0.0.1"))
                     && url.path() == "/index.html");
@@ -113,12 +126,17 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
             tauri::webview::NewWindowResponse::Deny
         })
         .on_download(move |_, event| {
-            if matches!(event, tauri::webview::DownloadEvent::Requested { .. }) {
+            if crate::operation::is_current_session(&download_handle, &download_session)
+                && matches!(event, tauri::webview::DownloadEvent::Requested { .. })
+            {
                 notify(&download_handle, "精简浏览模式暂不支持下载。");
             }
             false
         })
         .on_page_load(move |webview, payload| {
+            if !crate::operation::is_current_session(&load_handle, &load_session) {
+                return;
+            }
             let accent = load_handle
                 .state::<AppState>()
                 .settings
@@ -168,6 +186,7 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
         .map_err(|e| format!("无法创建浏览窗口，请检查 WebView2 Runtime 是否已安装。\n{e}"))?;
     #[cfg(debug_assertions)]
     eprintln!("browser host: created");
+    crate::appearance::install(&browser, app)?;
     platform::set_opacity(&browser, settings.opacity)?;
     platform::secure_webview(&browser, app.clone())?;
     crate::zoom::install(&browser, app)?;
@@ -219,33 +238,54 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
         controls_builder
     };
     let controls = controls_builder.build().map_err(|e| e.to_string())?;
+    crate::appearance::install(&controls, app)?;
     crate::corners::install_controls(app, &controls)?;
     platform::track_process(&controls, app.clone())?;
     #[cfg(debug_assertions)]
     eprintln!("control host: created");
     let handle = app.clone();
-    browser.on_window_event(move |event| match event {
-        WindowEvent::CloseRequested { api, .. } => {
+    let event_session = session.clone();
+    browser.on_window_event(move |event| {
+        if let WindowEvent::CloseRequested { api, .. } = event {
             api.prevent_close();
             lifecycle::exit(&handle, false);
+            return;
         }
-        WindowEvent::Moved(_) | WindowEvent::ScaleFactorChanged { .. } => {
-            if let Err(error) = sync_controls(&handle) {
-                notify(&handle, &error);
+        if *handle.state::<AppState>().session.lock().unwrap() != event_session {
+            return;
+        }
+        match event {
+            WindowEvent::CloseRequested { api, .. } => {
+                api.prevent_close();
+                lifecycle::exit(&handle, false);
             }
-        }
-        WindowEvent::Resized(_) => {
-            // Tauri rebuilds its rectangular resize border on WM_SIZE, even
-            // when a preceding move event already updated our geometry cache.
-            if let Err(error) = sync_controls_inner(&handle, true) {
-                notify(&handle, &error);
+            WindowEvent::Moved(_) | WindowEvent::ScaleFactorChanged { .. } => {
+                if let Err(error) = sync_controls(&handle) {
+                    notify(&handle, &error);
+                }
             }
-            lifecycle::save_size_later(&handle);
+            WindowEvent::Resized(_) => {
+                // Tauri rebuilds its rectangular resize border on WM_SIZE, even
+                // when a preceding move event already updated our geometry cache.
+                if let Err(error) = sync_controls_inner(&handle, true) {
+                    notify(&handle, &error);
+                }
+                lifecycle::save_size_later(&handle);
+            }
+            _ => {}
         }
-        _ => {}
     });
     let handle = app.clone();
+    let event_session = session.clone();
     controls.on_window_event(move |event| {
+        if let WindowEvent::CloseRequested { api, .. } = event {
+            api.prevent_close();
+            lifecycle::exit(&handle, false);
+            return;
+        }
+        if *handle.state::<AppState>().session.lock().unwrap() != event_session {
+            return;
+        }
         if matches!(event, WindowEvent::Focused(false)) {
             let _ = crate::context_menu::dismiss(&handle);
         }
@@ -254,16 +294,21 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
             lifecycle::exit(&handle, false);
         }
     });
-    state.visible.store(true, Ordering::SeqCst);
-    state.panel_open.store(false, Ordering::SeqCst);
-    *state.context_menu.lock().unwrap() = None;
     sync_controls(app)?;
+    if state.pending_exit.load(Ordering::SeqCst) != 0 {
+        state.visible.store(false, Ordering::SeqCst);
+        return Ok(());
+    }
     browser.show().map_err(|e| e.to_string())?;
     browser.set_focus().map_err(|e| e.to_string())?;
     // Showing a Tao host can rebuild its extended styles; reapply native alpha
     // and tool-window flags after the first show/focus transition.
     set_opacity(app, settings.opacity)?;
     crate::corners::sync(app, true)?;
+    if state.controls_ready.load(Ordering::SeqCst) {
+        controls.show().map_err(|e| e.to_string())?;
+        set_opacity(app, settings.opacity)?;
+    }
     // The controls reveal themselves once their embedded UI has finished loading.
     Ok(())
 }
@@ -290,18 +335,36 @@ pub fn current_drag_shape(app: &AppHandle) -> layout::DragShape {
             Some((size.width as i32, size.height as i32, scale))
         })
         .unwrap_or((p::DEFAULT_WIDTH as i32, p::DEFAULT_HEIGHT as i32, 1.));
-    layout::drag_shape(
+    cached_drag_shape(
+        app,
         current_radius(app, geometry.0, geometry.1, geometry.2),
         geometry.2,
     )
+    .as_ref()
+    .clone()
 }
 
-fn publish_drag_shape(app: &AppHandle, shape: &layout::DragShape) {
+pub fn cached_drag_shape(
+    app: &AppHandle,
+    radius: i32,
+    scale: f64,
+) -> std::sync::Arc<layout::DragShape> {
+    app.state::<AppState>()
+        .drag_cache
+        .lock()
+        .unwrap()
+        .get(radius, scale)
+}
+
+fn publish_drag_shape(app: &AppHandle, shape: &std::sync::Arc<layout::DragShape>) {
     let state = app.state::<AppState>();
     let mut previous = state.drag_shape.lock().unwrap();
-    if previous.as_ref() != Some(shape) {
+    if previous
+        .as_ref()
+        .is_none_or(|old| !std::sync::Arc::ptr_eq(old, shape))
+    {
         *previous = Some(shape.clone());
-        let _ = app.emit_to("controls", "drag-shape-changed", shape);
+        let _ = app.emit_to("controls", "drag-shape-changed", shape.as_ref());
     }
 }
 
@@ -341,8 +404,8 @@ fn sync_controls_inner(app: &AppHandle, force_corners: bool) -> Result<(), Strin
     let size = browser.inner_size().map_err(|e| e.to_string())?;
     let scale = browser.scale_factor().map_err(|e| e.to_string())?;
     let open = app.state::<AppState>().panel_open.load(Ordering::SeqCst);
-    let shape = current_drag_shape(app);
     let radius = current_radius(app, size.width as i32, size.height as i32, scale);
+    let shape = cached_drag_shape(app, radius, scale);
     let padding = layout::panel_inset(radius, scale);
     let (x, y, width, height) = if open {
         let width = size
@@ -380,13 +443,27 @@ fn sync_controls_inner(app: &AppHandle, force_corners: bool) -> Result<(), Strin
 }
 
 pub fn open_panel(app: &AppHandle) -> Result<(), String> {
+    crate::ui_thread::run(app, open_panel_inner)
+}
+fn open_panel_inner(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
     if state.busy.load(Ordering::SeqCst) {
         return Err("正在处理会话，请稍候".into());
     }
     crate::context_menu::dismiss(app)?;
-    state.panel_open.store(true, Ordering::SeqCst);
-    sync_controls(app)?;
+    let already_open = state.panel_open.swap(true, Ordering::SeqCst);
+    if let Err(error) = sync_controls(app) {
+        state.panel_open.store(already_open, Ordering::SeqCst);
+        let _ = sync_controls(app);
+        return Err(error);
+    }
+    if already_open {
+        if let Some(controls) = app.get_webview_window("controls") {
+            let _ = controls.set_focus();
+        }
+        return Ok(());
+    }
+    state.preview_epoch.fetch_add(1, Ordering::SeqCst);
     app.emit_to("controls", "settings-open", snapshot(app))
         .map_err(|e| e.to_string())?;
     if let Some(controls) = app.get_webview_window("controls") {
@@ -396,10 +473,18 @@ pub fn open_panel(app: &AppHandle) -> Result<(), String> {
 }
 
 pub fn close_panel(app: &AppHandle) -> Result<(), String> {
-    app.state::<AppState>()
-        .panel_open
-        .store(false, Ordering::SeqCst);
-    sync_controls(app)?;
+    crate::ui_thread::run(app, close_panel_inner)
+}
+fn close_panel_inner(app: &AppHandle) -> Result<(), String> {
+    crate::test_support::fail("panel_close")?;
+    let state = app.state::<AppState>();
+    let was_open = state.panel_open.swap(false, Ordering::SeqCst);
+    if let Err(error) = sync_controls(app) {
+        state.panel_open.store(was_open, Ordering::SeqCst);
+        let _ = sync_controls(app);
+        return Err(error);
+    }
+    state.preview_epoch.fetch_add(1, Ordering::SeqCst);
     let _ = app.emit_to("controls", "settings-close", ());
     if let Some(browser) = app.get_webview_window("browser") {
         let _ = browser.set_focus();
@@ -475,19 +560,37 @@ fn update_visibility(app: &AppHandle, visible: bool) {
 }
 
 pub fn set_opacity(app: &AppHandle, opacity: f64) -> Result<(), String> {
-    if let Some(browser) = app.get_webview_window("browser") {
-        platform::set_opacity(&browser, opacity)?;
-    }
     let state = app.state::<AppState>();
-    if let Some(controls) = app.get_webview_window("controls") {
-        platform::set_opacity(
-            &controls,
-            if state.panel_open.load(Ordering::SeqCst) || crate::context_menu::is_open(app) {
-                1.
-            } else {
-                opacity
-            },
-        )?;
+    let previous = *state.effective_opacity.lock().unwrap();
+    let solid_controls =
+        state.panel_open.load(Ordering::SeqCst) || crate::context_menu::is_open(app);
+    let browser = app.get_webview_window("browser");
+    let controls = app.get_webview_window("controls");
+    if let Some(browser) = &browser {
+        platform::set_opacity(browser, opacity)?;
+    }
+    let result = (|| {
+        if let Some(controls) = &controls {
+            crate::test_support::fail("controls_opacity")?;
+            platform::set_opacity(controls, if solid_controls { 1. } else { opacity })?;
+        }
+        Ok::<(), String>(())
+    })();
+    if let Err(error) = result {
+        let mut errors = vec![error];
+        if let Some(browser) = &browser {
+            if let Err(e) = platform::set_opacity(browser, previous) {
+                errors.push(format!("恢复网页不透明度失败：{e}"));
+            }
+        }
+        if let Some(controls) = &controls {
+            if let Err(e) =
+                platform::set_opacity(controls, if solid_controls { 1. } else { previous })
+            {
+                errors.push(format!("恢复控件不透明度失败：{e}"));
+            }
+        }
+        return Err(errors.join("；"));
     }
     *state.effective_opacity.lock().unwrap() = opacity;
     Ok(())

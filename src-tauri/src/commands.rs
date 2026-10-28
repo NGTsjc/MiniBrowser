@@ -1,7 +1,6 @@
-use crate::{config::Settings, lifecycle, shortcuts, state::AppState, windows};
+use crate::{config::Settings, lifecycle, state::AppState, windows};
 use std::sync::atomic::Ordering;
-use tauri::{AppHandle, Manager, WebviewWindow};
-use tauri_plugin_global_shortcut::GlobalShortcutExt;
+use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
 fn authorize(caller: &WebviewWindow) -> Result<(), String> {
     if caller.label() != "controls" {
@@ -85,11 +84,25 @@ pub fn restore_window(caller: WebviewWindow, app: AppHandle) -> Result<(), Strin
 #[tauri::command]
 pub fn frontend_ready(caller: WebviewWindow, app: AppHandle) -> Result<(), String> {
     authorize(&caller)?;
-    if app.state::<AppState>().visible.load(Ordering::SeqCst) {
+    let state = app.state::<AppState>();
+    state.controls_ready.store(true, Ordering::SeqCst);
+    if state.pending_exit.load(Ordering::SeqCst) != 0 {
+        return Ok(());
+    }
+    let main_visible = app
+        .get_webview_window("browser")
+        .is_some_and(|w| w.is_visible().unwrap_or(false));
+    if state.visible.load(Ordering::SeqCst) && main_visible {
         caller.show().map_err(|e| e.to_string())?;
         windows::sync_controls(&app)?;
+        let opacity = *state.effective_opacity.lock().unwrap();
+        windows::set_opacity(&app, opacity)?;
     }
-    if app.state::<AppState>().warning.lock().unwrap().is_some() {
+    if state.panel_open.load(Ordering::SeqCst) {
+        // A command can arrive before the JS event subscriptions are ready.
+        app.emit_to("controls", "settings-open", windows::snapshot(&app))
+            .map_err(|e| e.to_string())?;
+    } else if state.warning.lock().unwrap().is_some() {
         windows::open_panel(&app)?;
     } else if crate::context_menu::is_open(&app) {
         crate::context_menu::emit_open(&app)?;
@@ -98,12 +111,22 @@ pub fn frontend_ready(caller: WebviewWindow, app: AppHandle) -> Result<(), Strin
 }
 
 #[tauri::command]
-pub fn preview_opacity(caller: WebviewWindow, app: AppHandle, opacity: f64) -> Result<(), String> {
+pub fn preview_opacity(
+    caller: WebviewWindow,
+    app: AppHandle,
+    opacity: f64,
+    epoch: Option<u64>,
+) -> Result<(), String> {
     authorize(&caller)?;
-    if !(crate::parameters::MIN_OPACITY..=crate::parameters::MAX_OPACITY).contains(&opacity) {
-        return Err("不透明度无效".into());
-    }
-    windows::set_opacity(&app, opacity)
+    crate::ui_thread::run(&app, move |app| {
+        let _operation = crate::operation::Guard::begin(app)?;
+        crate::operation::validate_preview(app, epoch)?;
+        if !(crate::parameters::MIN_OPACITY..=crate::parameters::MAX_OPACITY).contains(&opacity) {
+            return Err("不透明度无效".into());
+        }
+        crate::test_support::fail("opacity_preview")?;
+        windows::set_opacity(app, opacity)
+    })
 }
 
 #[tauri::command]
@@ -111,27 +134,36 @@ pub fn preview_corner_radius(
     caller: WebviewWindow,
     app: AppHandle,
     radius: u32,
+    epoch: Option<u64>,
 ) -> Result<(), String> {
     authorize(&caller)?;
-    if app.state::<AppState>().busy.load(Ordering::SeqCst) {
-        return Err("正在处理，请稍候".into());
-    }
-    crate::corners::preview(&app, radius)
+    crate::ui_thread::run(&app, move |app| {
+        let _operation = crate::operation::Guard::begin(app)?;
+        crate::operation::validate_preview(app, epoch)?;
+        crate::test_support::fail("corner_preview")?;
+        crate::corners::preview(app, radius)
+    })
 }
 
 #[tauri::command]
-pub fn cancel_settings(caller: WebviewWindow, app: AppHandle) -> Result<(), String> {
+pub fn cancel_settings(
+    caller: WebviewWindow,
+    app: AppHandle,
+    epoch: Option<u64>,
+) -> Result<(), String> {
     authorize(&caller)?;
-    let opacity = app.state::<AppState>().settings.lock().unwrap().opacity;
-    windows::set_opacity(&app, opacity)?;
-    let radius = app
-        .state::<AppState>()
-        .settings
-        .lock()
-        .unwrap()
-        .corner_radius;
-    crate::corners::preview(&app, radius)?;
-    windows::close_panel(&app)
+    crate::ui_thread::run(&app, move |app| {
+        let _operation = crate::operation::Guard::begin(app)?;
+        crate::operation::validate_preview(app, epoch)?;
+        let state = app.state::<AppState>();
+        state.preview_epoch.fetch_add(1, Ordering::SeqCst);
+        let settings = state.settings.lock().unwrap().clone();
+        let opacity = windows::set_opacity(app, settings.opacity);
+        let corners = crate::corners::preview(app, settings.corner_radius);
+        opacity?;
+        corners?;
+        windows::close_panel(app)
+    })
 }
 
 #[tauri::command]
@@ -149,6 +181,7 @@ pub fn drag_window(caller: WebviewWindow, app: AppHandle) -> Result<(), String> 
 #[tauri::command]
 pub fn refresh_page(caller: WebviewWindow, app: AppHandle) -> Result<(), String> {
     authorize(&caller)?;
+    let _operation = crate::operation::Guard::begin(&app)?;
     if let Some(browser) = app.get_webview_window("browser") {
         browser.reload().map_err(|e| e.to_string())?;
     }
@@ -172,97 +205,12 @@ pub fn close_app(caller: WebviewWindow, app: AppHandle) -> Result<(), String> {
 pub fn apply_settings(
     caller: WebviewWindow,
     app: AppHandle,
-    mut settings: Settings,
+    settings: Settings,
     url_edited: bool,
-) -> Result<(), String> {
+    epoch: Option<u64>,
+) -> Result<crate::settings_transaction::Outcome, String> {
     authorize(&caller)?;
-    let state = app.state::<AppState>();
-    if state
-        .busy
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
-        return Err("正在处理，请稍候".into());
-    }
-    let result = apply_inner(&app, &mut settings, url_edited);
-    state.busy.store(false, Ordering::SeqCst);
-    result
-}
-
-fn apply_inner(app: &AppHandle, settings: &mut Settings, url_edited: bool) -> Result<(), String> {
-    let state = app.state::<AppState>();
-    let old = state.settings.lock().unwrap().clone();
-    // Dimensions are controlled by native resizing, not by frontend input.
-    (settings.width, settings.height) =
-        windows::current_size(app).unwrap_or((old.width, old.height));
-    settings.validate()?;
-    let old_key = shortcuts::parse(&old.shortcut).ok().flatten();
-    let new_key = shortcuts::parse(&settings.shortcut)?;
-    let changed = old_key != new_key;
-    let newly_registered = new_key.is_some_and(|key| !app.global_shortcut().is_registered(key));
-    if newly_registered {
-        if let Some(key) = new_key {
-            shortcuts::register(app, key)?;
-        }
-    }
-    let browser = app.get_webview_window("browser").ok_or("浏览窗口已关闭")?;
-    let result = (|| {
-        windows::apply_window_settings(app, settings)?;
-        caller_topmost(app, settings.always_on_top)?;
-        state.store.save(settings)?;
-        Ok::<(), String>(())
-    })();
-    if let Err(error) = result {
-        let _ = windows::apply_window_settings(app, &old);
-        let _ = caller_topmost(app, old.always_on_top);
-        if newly_registered {
-            if let Some(key) = new_key {
-                let _ = app.global_shortcut().unregister(key);
-            }
-        }
-        return Err(error);
-    }
-    if changed {
-        if let Some(key) = old_key {
-            let _ = app.global_shortcut().unregister(key);
-        }
-    }
-    *state.settings.lock().unwrap() = settings.clone();
-    crate::theme::sync(app, &settings.accent_color);
-    state.preserve_config.store(false, Ordering::SeqCst);
-    *state.warning.lock().unwrap() = None;
-    // Update existing documents and future top-level documents. The original
-    // initialization script is replaced in the platform hook below when needed.
-    let media_script = format!(
-        "window.__miniBrowserSetPause?.({})",
-        settings.pause_media_on_hide
-    );
-    browser.eval(&media_script).map_err(|e| e.to_string())?;
-    if url_edited {
-        let target = if settings.startup_url.is_empty() {
-            // Resolve the embedded guide against the same local origin as controls.
-            let controls = app.get_webview_window("controls").ok_or("设置界面已关闭")?;
-            controls
-                .url()
-                .map_err(|e| e.to_string())?
-                .join("index.html?view=guide")
-                .map_err(|e| e.to_string())?
-        } else {
-            settings
-                .startup_url
-                .parse()
-                .map_err(|e: url::ParseError| e.to_string())?
-        };
-        browser.navigate(target).map_err(|e| e.to_string())?;
-    }
-    windows::close_panel(app)
-}
-
-fn caller_topmost(app: &AppHandle, value: bool) -> Result<(), String> {
-    if let Some(controls) = app.get_webview_window("controls") {
-        controls
-            .set_always_on_top(value)
-            .map_err(|e| e.to_string())?;
-    }
-    Ok(())
+    crate::ui_thread::run(&app, move |app| {
+        crate::settings_transaction::apply(app, settings, url_edited, epoch)
+    })
 }

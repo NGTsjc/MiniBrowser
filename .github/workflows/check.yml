@@ -1,0 +1,50 @@
+name: Check and Build
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: check-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  check:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    defaults:
+      run:
+        shell: pwsh
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Check manifest versions
+        run: node scripts/sync-version.mjs --check
+      - name: Script tests
+        run: pnpm test:unit
+      - name: Build frontend
+        run: pnpm build:ui
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - name: Clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
+      - name: Rust tests
+        run: pnpm test:native
+      - name: Build portable executable
+        run: pnpm build
+      - name: Upload Windows x64 build
+        uses: actions/upload-artifact@v7
+        with:
+          name: MiniBrowser_win64_${{ github.sha }}
+          path: |
+            release/MiniBrowser.exe
+            release/MiniBrowser.exe.sha256
+          if-no-files-found: error
+          retention-days: 14

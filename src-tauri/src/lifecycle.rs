@@ -29,16 +29,31 @@ fn destroy_windows(app: &AppHandle) {
 
 pub fn exit(app: &AppHandle, restart: bool) {
     let state = app.state::<AppState>();
-    if state
-        .busy
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
+    if state.exiting.load(Ordering::SeqCst) {
+        return;
+    }
+    // Latest explicit request wins, even while saving/resetting/cleaning up.
+    state
+        .pending_exit
+        .store(if restart { 2 } else { 1 }, Ordering::SeqCst);
+    start_pending_exit(app);
+}
+
+pub fn start_pending_exit(app: &AppHandle) {
+    let state = app.state::<AppState>();
+    if state.pending_exit.load(Ordering::SeqCst) == 0
+        || state
+            .busy
+            .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
+            .is_err()
     {
         return;
     }
+    state.shutting_down.store(true, Ordering::SeqCst);
+    state.preview_epoch.fetch_add(1, Ordering::SeqCst);
     state.resize_generation.fetch_add(1, Ordering::SeqCst);
     let _ = app.global_shortcut().unregister_all();
-    save_size(app);
+    save_size_for_operation(app);
     let session = state.session.lock().unwrap().clone();
     let processes = std::mem::take(&mut *state.browser_processes.lock().unwrap());
     let app = app.clone();
@@ -46,45 +61,35 @@ pub fn exit(app: &AppHandle, restart: bool) {
         destroy_windows(&app);
         remove_session(&session, &processes);
         let handle = app.clone();
-        // Keep automatic last-window exits blocked until cleanup is complete.
-        // Set the exit gate and request exit/restart in the same event-loop turn.
-        let _ = app.run_on_main_thread(move || {
-            handle
-                .state::<AppState>()
-                .exiting
-                .store(true, Ordering::SeqCst);
-            if restart {
+        let result = app.run_on_main_thread(move || {
+            let state = handle.state::<AppState>();
+            state.exiting.store(true, Ordering::SeqCst);
+            if state.pending_exit.load(Ordering::SeqCst) == 2 {
                 handle.request_restart();
             } else {
                 handle.exit(0);
             }
         });
+        if result.is_err() {
+            app.exit(1);
+        }
     });
 }
 
 pub fn reset_session(app: &AppHandle) -> Result<(), String> {
+    let operation = crate::operation::Guard::begin(app)?;
     let state = app.state::<AppState>();
-    if state
-        .busy
-        .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-        .is_err()
-    {
-        return Err("正在处理会话，请稍候".into());
-    }
+    state.preview_epoch.fetch_add(1, Ordering::SeqCst);
     let url = windows::current_url(app);
-    save_size(app);
-    let new_session = match state.store.new_session() {
-        Ok(path) => path,
-        Err(e) => {
-            state.busy.store(false, Ordering::SeqCst);
-            return Err(e);
-        }
-    };
+    save_size_for_operation(app);
+    let new_session = state.store.new_session()?;
     let old_session = std::mem::replace(&mut *state.session.lock().unwrap(), new_session);
     let processes = std::mem::take(&mut *state.browser_processes.lock().unwrap());
     let _ = app.emit_to("controls", "session-reset", ());
     let app = app.clone();
     std::thread::spawn(move || {
+        let _operation = operation;
+        crate::test_support::delay("session_reset_delay_ms");
         #[cfg(debug_assertions)]
         eprintln!("session reset: destroy hosts");
         destroy_windows(&app);
@@ -93,11 +98,16 @@ pub fn reset_session(app: &AppHandle) -> Result<(), String> {
         remove_session(&old_session, &processes);
         #[cfg(debug_assertions)]
         eprintln!("session reset: build hosts");
-        if let Err(error) = windows::build(&app, &url) {
+        if app.state::<AppState>().pending_exit.load(Ordering::SeqCst) != 0 {
+            return;
+        }
+        if let Err(error) =
+            crate::test_support::fail("session_build").and_then(|_| windows::build(&app, &url))
+        {
             crate::platform::fatal(&error);
             app.exit(1);
         }
-        app.state::<AppState>().busy.store(false, Ordering::SeqCst);
+
         #[cfg(debug_assertions)]
         eprintln!("session reset: ready");
     });
@@ -105,6 +115,24 @@ pub fn reset_session(app: &AppHandle) -> Result<(), String> {
 }
 
 pub fn save_size(app: &AppHandle) {
+    save_size_impl(app, false);
+}
+fn save_size_for_operation(app: &AppHandle) {
+    save_size_impl(app, true);
+}
+fn save_size_impl(app: &AppHandle, force: bool) {
+    let result = crate::ui_thread::run(app, move |app| {
+        if !force && app.state::<AppState>().busy.load(Ordering::SeqCst) {
+            return Ok(());
+        }
+        save_size_inner(app);
+        Ok(())
+    });
+    if let Err(error) = result {
+        windows::notify(app, &error);
+    }
+}
+fn save_size_inner(app: &AppHandle) {
     let state = app.state::<AppState>();
     if let Some((width, height)) = windows::current_size(app) {
         let mut settings = state.settings.lock().unwrap();
@@ -115,8 +143,9 @@ pub fn save_size(app: &AppHandle) {
         settings.height = height;
         // Do not overwrite damaged user config as a side effect of resizing/exiting.
         if !state.preserve_config.load(Ordering::SeqCst) {
-            if let Err(error) = state.store.save(&settings) {
-                drop(settings);
+            let snapshot = settings.clone();
+            drop(settings);
+            if let Err(error) = state.store.save(&snapshot) {
                 windows::notify(app, &error);
             }
         }
@@ -125,7 +154,7 @@ pub fn save_size(app: &AppHandle) {
 
 pub fn save_size_later(app: &AppHandle) {
     let state = app.state::<AppState>();
-    if state.busy.load(Ordering::SeqCst) {
+    if state.shutting_down.load(Ordering::SeqCst) || state.exiting.load(Ordering::SeqCst) {
         return;
     }
     let mut generation = state.resize_generation.fetch_add(1, Ordering::SeqCst) + 1;
@@ -137,9 +166,13 @@ pub fn save_size_later(app: &AppHandle) {
         std::thread::sleep(Duration::from_millis(400));
         let state = app.state::<AppState>();
         let latest = state.resize_generation.load(Ordering::SeqCst);
-        if state.busy.load(Ordering::SeqCst) {
+        if state.shutting_down.load(Ordering::SeqCst) {
             state.size_save_scheduled.store(false, Ordering::SeqCst);
             return;
+        }
+        if state.busy.load(Ordering::SeqCst) {
+            generation = latest;
+            continue;
         }
         if latest != generation {
             generation = latest;
@@ -153,6 +186,10 @@ pub fn save_size_later(app: &AppHandle) {
                 && !state.busy.load(Ordering::SeqCst)
             {
                 save_size(&handle);
+            } else if state.busy.load(Ordering::SeqCst)
+                && !state.shutting_down.load(Ordering::SeqCst)
+            {
+                save_size_later(&handle);
             }
         });
         return;

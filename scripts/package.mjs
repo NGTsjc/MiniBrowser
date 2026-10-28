@@ -8,6 +8,7 @@ assert.equal(binary.readUInt32LE(pe), 0x4550, 'Valid PE executable');
 assert.equal(binary.readUInt16LE(pe + 4), 0x8664, 'Windows x64 target');
 assert.equal(binary.readUInt16LE(pe + 24 + 68), 2, 'GUI subsystem, no console window');
 assert.equal(binary.includes(Buffer.from('MINIBROWSER_TEST_CDP')), false, 'No test CDP flag in release');
+assert.equal(binary.includes(Buffer.from('test-faults.json')), false, 'No debug fault injection in release');
 const icon = await readFile('src-tauri/icons/icon.ico');
 assert.equal(icon.readUInt16LE(2), 1, 'Valid application ICO');
 for (let i = 0; i < icon.readUInt16LE(4); i++) {

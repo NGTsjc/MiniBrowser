@@ -10,6 +10,7 @@ import path from 'node:path';
 import { checkNewPages } from './new-page-checks.mjs';
 import { checkCornerPrototype, checkCornerSettings } from './corner-checks.mjs';
 import { checkControlLayout } from './control-layout-checks.mjs';
+import { CDP } from './cdp.mjs';
 import { checkPageZoom } from './zoom-checks.mjs';
 
 const root = path.resolve('.cache/smoke-portable', String(Date.now()));
@@ -26,48 +27,6 @@ async function until(fn, timeout = 60000) {
   throw error ?? new Error('Timed out');
 }
 
-class CDP {
-  constructor(socket) {
-    this.socket = socket; this.next = 1; this.pending = new Map();
-    socket.addEventListener('message', event => {
-      const message = JSON.parse(event.data);
-      if (message.id && this.pending.has(message.id)) {
-        const { resolve, reject, timer } = this.pending.get(message.id);
-        clearTimeout(timer); this.pending.delete(message.id);
-        if (message.error) reject(new Error(JSON.stringify(message.error))); else resolve(message.result);
-      }
-    });
-    socket.addEventListener('close', () => {
-      for (const p of this.pending.values()) { clearTimeout(p.timer); p.reject(new Error('CDP closed')); }
-      this.pending.clear();
-    });
-  }
-  static async connect(port) {
-    const targets = await (await fetch(`http://127.0.0.1:${port}/json/list`)).json();
-    const target = targets.find(t => t.type === 'page');
-    if (!target) throw new Error('No page target');
-    const ws = new WebSocket(target.webSocketDebuggerUrl);
-    await new Promise((resolve, reject) => { ws.addEventListener('open', resolve, { once: true }); ws.addEventListener('error', reject, { once: true }); });
-    return new CDP(ws);
-  }
-  send(method, params = {}) {
-    return new Promise((resolve, reject) => {
-      const id = this.next++;
-      const timer = setTimeout(() => { this.pending.delete(id); reject(new Error(`${method} timeout`)); }, 12000);
-      this.pending.set(id, { resolve, reject, timer });
-      this.socket.send(JSON.stringify({ id, method, params }));
-    });
-  }
-  async evaluate(expression) {
-    const result = await this.send('Runtime.evaluate', { expression, awaitPromise: true, returnByValue: true, userGesture: true });
-    if (result.exceptionDetails) throw new Error(JSON.stringify(result.exceptionDetails));
-    return result.result.value;
-  }
-  invoke(command, args = {}) {
-    return this.evaluate(`window.__TAURI_INTERNALS__.invoke(${JSON.stringify(command)}, ${JSON.stringify(args)})`);
-  }
-  close() { this.socket.close(); }
-}
 
 const wav = Buffer.alloc(44 + 44100 * 2);
 wav.write('RIFF'); wav.writeUInt32LE(wav.length - 8, 4); wav.write('WAVEfmt ', 8);
@@ -94,7 +53,7 @@ let browser;
 let testProcessId = 0;
 const execute = promisify(execFile);
 async function native(action = 'inspect', point = null) {
-  const result = await execute('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('scripts/native-probe.ps1'), '-AppProcessId', String(testProcessId), '-ExecutablePath', executable, '-Action', action, ...(point ? ['-ClickX', String(Math.round(point.x)), '-ClickY', String(Math.round(point.y)), ...(point.ticks ? ['-WheelTicks',String(point.ticks)] : [])] : [])], { windowsHide: true, encoding: 'utf8' });
+  const result = await execute('powershell.exe', ['-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', path.resolve('scripts/tests/native-probe.ps1'), '-AppProcessId', String(testProcessId), '-ExecutablePath', executable, '-Action', action, ...(point ? ['-ClickX', String(Math.round(point.x)), '-ClickY', String(Math.round(point.y)), ...(point.ticks ? ['-WheelTicks',String(point.ticks)] : [])] : [])], { windowsHide: true, encoding: 'utf8' });
   return JSON.parse(result.stdout.replace(/^\uFEFF/, '').trim());
 }
 const results = [];

@@ -59,7 +59,9 @@ pub fn preview(app: &AppHandle, radius: u32) -> Result<(), String> {
     let previous = std::mem::replace(&mut *state.effective_corner_radius.lock().unwrap(), radius);
     if let Err(error) = crate::windows::sync_controls(app) {
         *state.effective_corner_radius.lock().unwrap() = previous;
-        let _ = crate::windows::sync_controls(app);
+        if let Err(rollback) = crate::windows::sync_controls(app) {
+            return Err(format!("{error}；恢复圆角失败：{rollback}"));
+        }
         return Err(error);
     }
     Ok(())
@@ -325,6 +327,14 @@ mod native {
             std::mem::forget(self);
             Ok(())
         }
+        fn snapshot(hwnd: HWND) -> Result<Option<Self>, String> {
+            let region = Self::new(1, 1, 0)?;
+            if unsafe { GetWindowRgn(hwnd, region.0) }.0 == ERROR {
+                Ok(None)
+            } else {
+                Ok(Some(region))
+            }
+        }
         fn polygon(points: &[[i32; 2]]) -> Result<Self, String> {
             use windows::Win32::Foundation::POINT;
             let points: Vec<POINT> = points.iter().map(|p| POINT { x: p[0], y: p[1] }).collect();
@@ -486,7 +496,7 @@ mod native {
             return Ok(());
         }
         let main_region = Region::new(geometry.width, geometry.height, geometry.radius)?;
-        let drag = crate::windows::current_drag_shape(app);
+        let drag = crate::windows::cached_drag_shape(app, geometry.radius, scale);
         let control_region = if !menu && !panel && drag.arc {
             Region::polygon(&drag.points)?
         } else {
@@ -512,20 +522,34 @@ mod native {
                 }
             }
         }
-        let old = Region::new(1, 1, 0)?;
-        let had_region = unsafe { GetWindowRgn(main, old.0) }.0 != ERROR;
-        main_region.apply(main)?;
-        if let Err(error) = control_region.apply(overlay) {
-            if had_region {
-                let _ = old.apply(main);
-            } else {
-                unsafe {
-                    SetWindowRgn(main, None, true);
+        let old_main = Region::snapshot(main)?;
+        let old_controls = Region::snapshot(overlay)?;
+        let result = (|| {
+            main_region.apply(main)?;
+            crate::test_support::fail("control_region")?;
+            control_region.apply(overlay)?;
+            resize_band(app, main, geometry, scale)
+        })();
+        if let Err(error) = result {
+            LAST.with(|last| *last.borrow_mut() = None);
+            let mut errors = vec![error];
+            for (hwnd, previous) in [(main, old_main), (overlay, old_controls)] {
+                let restored = match previous {
+                    Some(region) => region.apply(hwnd),
+                    None => {
+                        if unsafe { SetWindowRgn(hwnd, None, true) } == 0 {
+                            Err("恢复矩形区域失败".into())
+                        } else {
+                            Ok(())
+                        }
+                    }
+                };
+                if let Err(e) = restored {
+                    errors.push(e);
                 }
             }
-            return Err(error);
+            return Err(errors.join("；"));
         }
-        resize_band(app, main, geometry, scale)?;
         LAST.with(|last| *last.borrow_mut() = Some(geometry));
         Ok(())
     }

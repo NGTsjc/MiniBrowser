@@ -1,5 +1,6 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod appearance;
 mod bounds;
 mod commands;
 mod config;
@@ -8,12 +9,16 @@ mod control_layout;
 mod corners;
 mod lifecycle;
 mod navigation;
+mod operation;
 mod parameters;
 mod platform;
+mod settings_transaction;
 mod shortcuts;
 mod state;
+mod test_support;
 mod theme;
 mod tray;
+mod ui_thread;
 mod windows;
 mod zoom;
 
@@ -83,12 +88,12 @@ fn main() {
     drop(startup_gate);
     match app {
         Ok(app) => app.run(|app, event| {
-            if let tauri::RunEvent::ExitRequested { api, .. } = event {
+            if let tauri::RunEvent::ExitRequested { api, code, .. } = event {
                 if let Some(state) = app.try_state::<AppState>() {
-                    if !state.exiting.load(Ordering::SeqCst) {
+                    if code.is_none() && !state.exiting.load(Ordering::SeqCst) {
                         // Destroying both hosts during a session reset can enqueue
                         // an automatic last-window exit after the replacement exists.
-                        // Only explicit close/restart paths are allowed to exit.
+                        // Explicit exits, including fatal rebuild errors, must not be trapped.
                         api.prevent_exit();
                     }
                 }

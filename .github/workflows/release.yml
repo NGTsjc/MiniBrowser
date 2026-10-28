@@ -1,0 +1,86 @@
+name: Build and Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  release:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    permissions:
+      contents: write
+    defaults:
+      run:
+        shell: pwsh
+    env:
+      RELEASE_TAG: ${{ github.ref_name }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Sync application version from tag
+        id: version
+        run: |
+          node scripts/sync-version.mjs $env:RELEASE_TAG
+          if ($LASTEXITCODE -ne 0) { throw 'Invalid release tag or manifest versions' }
+          $version = $env:RELEASE_TAG.Substring(1)
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "prerelease=$($version.Split('+')[0].Contains('-').ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+      - name: Script tests
+        run: pnpm test:unit
+      - name: Verify synchronized versions
+        run: node scripts/sync-version.mjs $env:RELEASE_TAG --check
+      - name: Build frontend
+        run: pnpm build:ui
+      - name: Check Rust formatting
+        run: cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+      - name: Clippy
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --locked --all-targets -- -D warnings
+      - name: Rust tests
+        run: pnpm test:native
+      - name: Build portable executable
+        run: pnpm build
+      - name: Package Windows x64 release
+        env:
+          RELEASE_VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          $zipName = "MiniBrowser_$($env:RELEASE_VERSION)_win64.zip"
+          $zipPath = Join-Path release $zipName
+          Compress-Archive -LiteralPath release/MiniBrowser.exe, release/MiniBrowser.exe.sha256 -DestinationPath $zipPath
+          $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
+          Set-Content -LiteralPath "$zipPath.sha256" -Value "$hash  $zipName" -Encoding utf8NoBOM
+      - name: Upload release build
+        uses: actions/upload-artifact@v7
+        with:
+          name: MiniBrowser_win64_${{ steps.version.outputs.version }}
+          path: |
+            release/MiniBrowser.exe
+            release/MiniBrowser.exe.sha256
+            release/MiniBrowser_*.zip
+            release/MiniBrowser_*.zip.sha256
+          if-no-files-found: error
+          retention-days: 14
+      - name: Publish GitHub Release
+        uses: ncipollo/release-action@v1
+        with:
+          name: MiniBrowser ${{ github.ref_name }}
+          tag: ${{ github.ref_name }}
+          artifacts: release/MiniBrowser.exe,release/MiniBrowser.exe.sha256,release/MiniBrowser_*.zip,release/MiniBrowser_*.zip.sha256
+          artifactErrorsFailBuild: true
+          generateReleaseNotes: true
+          immutableCreate: true
+          makeLatest: legacy
+          prerelease: ${{ steps.version.outputs.prerelease == 'true' }}
+          body: |
+            Windows x64 便携版，解压后运行 MiniBrowser.exe，或直接下载 EXE。
+            需要已安装的系统 WebView2 Runtime；配置保存在 EXE 同级的 MiniBrowser.data 中。
+          token: ${{ secrets.GITHUB_TOKEN }}

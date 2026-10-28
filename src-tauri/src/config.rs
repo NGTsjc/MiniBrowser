@@ -5,6 +5,7 @@ use std::{
     fs,
     io::Write,
     path::{Path, PathBuf},
+    sync::Mutex,
     time::{SystemTime, UNIX_EPOCH},
 };
 
@@ -92,6 +93,7 @@ impl Settings {
 
 pub struct PortableStore {
     pub root: PathBuf,
+    write_lock: Mutex<()>,
 }
 
 pub struct LoadedSettings {
@@ -108,7 +110,10 @@ impl PortableStore {
     }
 
     pub fn at(root: PathBuf) -> Result<Self, String> {
-        let store = Self { root };
+        let store = Self {
+            root,
+            write_lock: Mutex::new(()),
+        };
         fs::create_dir_all(store.root.join("sessions")).map_err(portable_error)?;
         let probe = store.root.join(".write-check");
         fs::write(&probe, b"portable").map_err(portable_error)?;
@@ -194,6 +199,10 @@ impl PortableStore {
     }
 
     pub fn save(&self, settings: &Settings) -> Result<(), String> {
+        let _write = self
+            .write_lock
+            .lock()
+            .map_err(|_| "配置写入锁不可用".to_string())?;
         let bytes = serde_json::to_vec_pretty(settings).map_err(|e| e.to_string())?;
         let temp = self.root.join("settings.json.tmp");
         let result = (|| {
@@ -269,16 +278,31 @@ fn atomic_replace(from: &Path, to: &Path) -> Result<(), String> {
             MoveFileExW, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
         },
     };
+    if fs::metadata(to).is_ok_and(|m| m.permissions().readonly()) {
+        return Err("配置文件为只读，无法替换".into());
+    }
     let from: Vec<u16> = from.as_os_str().encode_wide().chain(Some(0)).collect();
     let to: Vec<u16> = to.as_os_str().encode_wide().chain(Some(0)).collect();
-    unsafe {
-        MoveFileExW(
-            PCWSTR(from.as_ptr()),
-            PCWSTR(to.as_ptr()),
-            MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
-        )
+    for attempt in 0..=4 {
+        let result = unsafe {
+            MoveFileExW(
+                PCWSTR(from.as_ptr()),
+                PCWSTR(to.as_ptr()),
+                MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH,
+            )
+        };
+        match result {
+            Ok(()) => return Ok(()),
+            Err(error) => {
+                let code = error.code().0 as u32;
+                if attempt == 4 || !matches!(code, 0x80070005 | 0x80070020 | 0x80070021) {
+                    return Err(error.to_string());
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20 << attempt));
+            }
+        }
     }
-    .map_err(|e| e.to_string())
+    unreachable!()
 }
 
 #[cfg(not(windows))]
@@ -289,6 +313,55 @@ fn atomic_replace(from: &Path, to: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn simultaneous_saves_never_share_an_active_temporary_file() {
+        let store = std::sync::Arc::new(store());
+        let threads: Vec<_> = (0..8)
+            .map(|i| {
+                let store = store.clone();
+                std::thread::spawn(move || {
+                    let settings = Settings {
+                        width: 500. + i as f64,
+                        ..Settings::default()
+                    };
+                    for _ in 0..4 {
+                        store.save(&settings).unwrap();
+                    }
+                })
+            })
+            .collect();
+        for worker in threads {
+            worker.join().unwrap();
+        }
+        assert!((500. ..=507.).contains(&store.load().settings.width));
+        assert!(!store.root.join("settings.json.tmp").exists());
+        fs::remove_dir_all(&store.root).unwrap();
+    }
+
+    #[cfg(windows)]
+    #[test]
+    fn brief_windows_file_lock_is_retried_without_replacing_dependencies_or_defaults() {
+        use std::os::windows::fs::OpenOptionsExt;
+        let store = store();
+        store.save(&Settings::default()).unwrap();
+        let locked = fs::OpenOptions::new()
+            .read(true)
+            .share_mode(0)
+            .open(store.root.join("settings.json"))
+            .unwrap();
+        let unlock = std::thread::spawn(move || {
+            std::thread::sleep(std::time::Duration::from_millis(70));
+            drop(locked);
+        });
+        let updated = Settings {
+            corner_radius: 128,
+            ..Settings::default()
+        };
+        store.save(&updated).unwrap();
+        unlock.join().unwrap();
+        assert_eq!(store.load().settings, updated);
+        fs::remove_dir_all(store.root).unwrap();
+    }
     fn store() -> PortableStore {
         let stamp = SystemTime::now()
             .duration_since(UNIX_EPOCH)

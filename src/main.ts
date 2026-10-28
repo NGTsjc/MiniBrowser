@@ -2,9 +2,10 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { bindToolbar, renderDragShape } from './gear';
 import { createContextMenu } from './context-menu';
-import type { Settings, Snapshot, DragShape } from './types';
+import type { Settings, Snapshot, DragShape, ApplyOutcome } from './types';
 import { bindThemeEditor, initializeTheme } from './theme';
 import './style.css';
+import { LatestPreview } from './preview';
 import { parameters, initializeParameters } from './parameters';
 
 initializeParameters();
@@ -72,15 +73,21 @@ if (view !== 'controls') {
   let settings: Settings | null = null;
   let editedUrl = false;
   let busy = false;
-  let pendingOpacity: Promise<unknown> = Promise.resolve();
-  let opacityScheduled = false;
-  let pendingCorners: Promise<unknown> = Promise.resolve();
-  let cornersScheduled = false;
+  let previewEpoch = 0;
+  const opacityPreview = new LatestPreview<{value:number;epoch:number}>(
+    ({value,epoch}) => invoke('preview_opacity',{opacity:value,epoch}), report);
+  const cornerPreview = new LatestPreview<{value:number;epoch:number}>(
+    ({value,epoch}) => invoke('preview_corner_radius',{radius:value,epoch}), report);
+  const flushPreviews = () => Promise.all([opacityPreview.flush(), cornerPreview.flush()]);
+  const stopPreviews = () => Promise.all([opacityPreview.cancel(), cornerPreview.cancel()]);
+  async function refreshEpoch() {
+    try { previewEpoch = (await invoke<Snapshot>('get_settings')).previewEpoch; } catch { /* host may be closing */ }
+  }
 
   function report(error: unknown) {
     notice.textContent = String(error);
     notice.hidden = false;
-    if (panel.hidden) void invoke('open_settings').catch(() => {});
+    if (panel.hidden) void invoke('open_settings').then(() => { if (!panel.hidden) { notice.textContent = String(error); notice.hidden = false; } }).catch(() => {});
   }
   function setBusy(value: boolean, message = '') {
     busy = value;
@@ -92,6 +99,12 @@ if (view !== 'controls') {
     try { await invoke(command); } catch (error) { report(error); }
   }
   function open(snapshot: Snapshot) {
+    if (settings && !panel.hidden) {
+      if (snapshot.warning) { notice.textContent = snapshot.warning; notice.hidden = false; }
+      return;
+    }
+    previewEpoch = snapshot.previewEpoch;
+    opacityPreview.resume(); cornerPreview.resume();
     settings = structuredClone(snapshot.settings);
     themeEditor.open(settings);
     editedUrl = false;
@@ -113,6 +126,7 @@ if (view !== 'controls') {
     setTimeout(() => url.focus(), 60);
   }
   function close() {
+    void stopPreviews();
     themeEditor.close();
     panel.hidden = true;
     toolbar.hidden = false;
@@ -122,28 +136,21 @@ if (view !== 'controls') {
   async function cancel() {
     if (busy) return;
     setBusy(true);
-    await Promise.all([pendingOpacity, pendingCorners]);
-    try { await invoke('cancel_settings'); } catch (error) { setBusy(false); report(error); }
+    await stopPreviews();
+    try { await invoke('cancel_settings', {epoch:previewEpoch}); }
+    catch (error) { await refreshEpoch(); opacityPreview.resume(); cornerPreview.resume(); setBusy(false); report(error); }
   }
   bindToolbar(toolbar, report);
   url.addEventListener('input', () => { editedUrl = true; });
   opacity.addEventListener('input', () => {
     element<HTMLOutputElement>('opacity-value').value = `${opacity.value}%`;
-    if (opacityScheduled) return;
-    opacityScheduled = true;
-    pendingOpacity = pendingOpacity.then(() => new Promise<void>((resolve) => requestAnimationFrame(() => {
-      opacityScheduled = false;
-      invoke('preview_opacity', { opacity: Number(opacity.value) / 100 }).catch(report).finally(resolve);
-    })));
+    if (busy || panel.hidden) return;
+    opacityPreview.enqueue({value:Number(opacity.value)/100, epoch:previewEpoch});
   });
   cornerRadius.addEventListener('input', () => {
-    element<HTMLOutputElement>('corner-radius-value').value = `${cornerRadius.value} px`;
-    if (cornersScheduled) return;
-    cornersScheduled = true;
-    pendingCorners = pendingCorners.then(() => new Promise<void>(resolve => requestAnimationFrame(() => {
-      cornersScheduled = false;
-      invoke('preview_corner_radius', { radius: Number(cornerRadius.value) }).catch(report).finally(resolve);
-    })));
+    element<HTMLOutputElement>('corner-radius-value').value = Number(cornerRadius.value) + ' px';
+    if (busy || panel.hidden) return;
+    cornerPreview.enqueue({value:Number(cornerRadius.value), epoch:previewEpoch});
   });
   shortcut.addEventListener('keydown', (event) => {
     if (event.key === 'Tab' || event.key === 'Escape') return;
@@ -166,9 +173,10 @@ if (view !== 'controls') {
   element('clear-cache').addEventListener('click', () => { confirmation.hidden = false; });
   element('clear-no').addEventListener('click', () => { confirmation.hidden = true; });
   element('clear-yes').addEventListener('click', async () => {
-    await Promise.all([pendingOpacity, pendingCorners]);
+    if (busy) return;
     setBusy(true, '正在清理…');
-    try { await invoke('clear_session'); } catch (error) { setBusy(false); report(error); }
+    await stopPreviews();
+    try { await invoke('clear_session'); } catch (error) { await refreshEpoch(); opacityPreview.resume(); cornerPreview.resume(); setBusy(false); report(error); }
   });
   element('cancel').addEventListener('click', () => void cancel());
   document.addEventListener('keydown', (event) => {
@@ -178,12 +186,20 @@ if (view !== 'controls') {
     event.preventDefault();
     if (!settings || busy) return;
     setBusy(true, '正在保存…');
-    await Promise.all([pendingOpacity, pendingCorners]);
+    await flushPreviews();
     const draft: Settings = { ...settings, startupUrl: url.value, alwaysOnTop: topmost.checked,
       opacity: Number(opacity.value) / 100, shortcut: shortcut.value || null, pauseMediaOnHide: pause.checked,
       accentColor: themeEditor.value(), cornerRadius: Number(cornerRadius.value) };
-    try { await invoke('apply_settings', { settings: draft, urlEdited: editedUrl }); }
-    catch (error) { setBusy(false); report(error); }
+    try {
+      const result = await invoke<ApplyOutcome>('apply_settings', {settings:draft, urlEdited:editedUrl, epoch:previewEpoch});
+      if (result.warnings.length) {
+        settings = structuredClone(result.settings);
+        previewEpoch = result.previewEpoch;
+        editedUrl = result.navigationFailed;
+        setBusy(false);
+        notice.textContent = '设置已保存；' + result.warnings.join('；'); notice.hidden = false;
+      }
+    } catch (error) { await refreshEpoch(); setBusy(false); report(error); }
   });
 
   async function initialize() {

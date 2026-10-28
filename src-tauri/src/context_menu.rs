@@ -24,6 +24,10 @@ pub fn emit_open(app: &AppHandle) -> Result<(), String> {
 }
 
 pub fn show(app: &AppHandle, source: &str) -> Result<(), String> {
+    let source = source.to_owned();
+    crate::ui_thread::run(app, move |app| show_inner(app, &source))
+}
+fn show_inner(app: &AppHandle, source: &str) -> Result<(), String> {
     let state = app.state::<AppState>();
     if state.busy.load(Ordering::SeqCst) || !state.visible.load(Ordering::SeqCst) {
         return Ok(());
@@ -32,13 +36,23 @@ pub fn show(app: &AppHandle, source: &str) -> Result<(), String> {
         return Ok(());
     };
     let cursor = window.cursor_position().map_err(|e| e.to_string())?;
-    *state.context_menu.lock().unwrap() = Some((cursor.x as i32, cursor.y as i32));
-    windows::sync_controls(app)?;
-    emit_open(app)?;
-    if let Some(controls) = app.get_webview_window("controls") {
-        controls.show().map_err(|e| e.to_string())?;
-        controls.set_focus().map_err(|e| e.to_string())?;
-        platform::set_opacity(&controls, 1.)?;
+    let previous = state
+        .context_menu
+        .lock()
+        .unwrap()
+        .replace((cursor.x as i32, cursor.y as i32));
+    let result = (|| {
+        windows::sync_controls(app)?;
+        emit_open(app)?;
+        if let Some(controls) = app.get_webview_window("controls") {
+            controls.show().map_err(|e| e.to_string())?;
+            controls.set_focus().map_err(|e| e.to_string())?;
+            platform::set_opacity(&controls, 1.)?;
+        }
+        Ok(())
+    })();
+    if let Err(error) = result {
+        return rollback(app, previous, error);
     }
     Ok(())
 }
@@ -76,19 +90,37 @@ pub fn layout(app: &AppHandle) -> Result<Option<(i32, i32, u32, u32)>, String> {
 }
 
 pub fn dismiss(app: &AppHandle) -> Result<(), String> {
-    if app
-        .state::<AppState>()
-        .context_menu
-        .lock()
-        .unwrap()
-        .take()
-        .is_some()
-    {
-        app.emit_to("controls", "context-menu-close", ())
-            .map_err(|e| e.to_string())?;
-        windows::sync_controls(app)?;
+    crate::ui_thread::run(app, |app| {
+        let previous = app.state::<AppState>().context_menu.lock().unwrap().take();
+        if previous.is_none() {
+            return Ok(());
+        }
+        let result = windows::sync_controls(app).and_then(|_| {
+            app.emit_to("controls", "context-menu-close", ())
+                .map_err(|e| e.to_string())
+        });
+        if let Err(error) = result {
+            return rollback(app, previous, error);
+        }
+        Ok(())
+    })
+}
+fn rollback(app: &AppHandle, previous: Option<(i32, i32)>, error: String) -> Result<(), String> {
+    *app.state::<AppState>().context_menu.lock().unwrap() = previous;
+    let mut errors = vec![error];
+    if let Err(e) = windows::sync_controls(app) {
+        errors.push(format!("恢复菜单位置失败：{e}"));
     }
-    Ok(())
+    let event = if previous.is_some() {
+        emit_open(app)
+    } else {
+        app.emit_to("controls", "context-menu-close", ())
+            .map_err(|e| e.to_string())
+    };
+    if let Err(e) = event {
+        errors.push(e);
+    }
+    Err(errors.join("；"))
 }
 
 pub fn perform(app: &AppHandle, action: &str) -> Result<(), String> {
@@ -98,8 +130,12 @@ pub fn perform(app: &AppHandle, action: &str) -> Result<(), String> {
     ) {
         return Err("不支持的菜单操作".into());
     }
-    if app.state::<AppState>().busy.load(Ordering::SeqCst) {
+    if matches!(action, "close" | "restart") {
+        lifecycle::exit(app, action == "restart");
         return Ok(());
+    }
+    if app.state::<AppState>().busy.load(Ordering::SeqCst) {
+        return Err("正在处理，请稍候".into());
     }
     dismiss(app)?;
     match action {
@@ -141,6 +177,7 @@ pub fn install_browser(browser: &tauri::WebviewWindow, app: &AppHandle) -> Resul
     #[cfg(windows)]
     {
         let app = app.clone();
+        let session = app.state::<AppState>().session.lock().unwrap().clone();
         browser
             .with_webview(move |webview| unsafe {
                 use ::windows::core::{Interface, PWSTR};
@@ -155,6 +192,9 @@ pub fn install_browser(browser: &tauri::WebviewWindow, app: &AppHandle) -> Resul
                 {
                     let handler =
                         ContextMenuRequestedEventHandler::create(Box::new(move |_, args| {
+                            if !crate::operation::is_current_session(&app, &session) {
+                                return Ok(());
+                            }
                             let Some(args) = args else { return Ok(()) };
                             let target = args.ContextMenuTarget()?;
                             let mut uri = PWSTR::null();
@@ -172,9 +212,16 @@ pub fn install_browser(browser: &tauri::WebviewWindow, app: &AppHandle) -> Resul
                             }
                             args.SetHandled(true)?;
                             let handle = app.clone();
+                            let source_session = session.clone();
                             std::thread::spawn(move || {
                                 let menu_app = handle.clone();
                                 let _ = handle.run_on_main_thread(move || {
+                                    if !crate::operation::is_current_session(
+                                        &menu_app,
+                                        &source_session,
+                                    ) {
+                                        return;
+                                    }
                                     let still_guide =
                                         menu_app.get_webview_window("browser").is_some_and(|w| {
                                             w.url().is_ok_and(|u| is_guide_url(u.as_str()))

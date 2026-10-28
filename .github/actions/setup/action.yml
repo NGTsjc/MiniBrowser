@@ -1,0 +1,24 @@
+name: Setup MiniBrowser build
+description: Install the Windows Rust, Node.js and pnpm toolchains with locked dependencies
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v7
+      with:
+        node-version: '24'
+        package-manager-cache: false
+    - uses: pnpm/action-setup@v6
+      with:
+        cache: true
+    - uses: dtolnay/rust-toolchain@stable
+      with:
+        toolchain: '1.96.0'
+        targets: x86_64-pc-windows-msvc
+        components: rustfmt, clippy
+    - uses: Swatinem/rust-cache@v2
+      with:
+        workspaces: src-tauri -> target
+        save-if: ${{ github.event_name != 'pull_request' }}
+    - name: Install locked dependencies
+      shell: pwsh
+      run: pnpm install --frozen-lockfile

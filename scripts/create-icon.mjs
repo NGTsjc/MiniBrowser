@@ -1,3 +1,5 @@
+// Legacy placeholder generator, not used by the current build.
+// Running this overwrites the current personal-logo ICO; see scripts/README.md.
 // Generate the small native window/tray mark without an image build dependency.
 import { mkdirSync, writeFileSync } from 'node:fs';
 const size = 32;

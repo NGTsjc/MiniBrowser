@@ -4,7 +4,7 @@ param(
     [int]$ClickX=100,
     [int]$ClickY=35,
     [ValidateRange(1,8)][int]$WheelTicks=1,
-    [ValidateSet('inspect','clickGear','dragToolbar','resize','edgeResize','hotkey','close','moveBeyond','releaseBounds','inspectMenu','dismissMenu','menuRefresh','menuHide','menuRestore','menuClose','menuRestart','clickOutsideMenu','inspectDevtools','closeDevtools','rightClickPage','rightClickControl','ctrlClickPage','middleClickPage','clickPage','openTrayMenu','trayReset','captureWindow','minimumResize','cornerResizeTL','cornerResizeTR','cornerResizeBL','cornerResizeBR','inspectChildren','zoomIn','zoomOut','zoomReset','zoomPlus','zoomMinus','zoomControl','scrollPage')][string]$Action='inspect'
+    [ValidateSet('inspect','resetExtendedStyles','clickGear','dragToolbar','resize','edgeResize','hotkey','close','moveBeyond','releaseBounds','inspectMenu','dismissMenu','menuRefresh','menuHide','menuRestore','menuClose','menuRestart','clickOutsideMenu','inspectDevtools','closeDevtools','rightClickPage','rightClickControl','ctrlClickPage','middleClickPage','clickPage','openTrayMenu','trayReset','captureWindow','minimumResize','cornerResizeTL','cornerResizeTR','cornerResizeBL','cornerResizeBR','inspectChildren','zoomIn','zoomOut','zoomReset','zoomPlus','zoomMinus','zoomControl','scrollPage')][string]$Action='inspect'
 )
 $ErrorActionPreference='Stop'
 [Console]::OutputEncoding=[System.Text.Encoding]::UTF8
@@ -31,6 +31,7 @@ public static class MiniProbe {
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
     [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr window, int index);
+    [DllImport("user32.dll")] public static extern int SetWindowLong(IntPtr window, int index, int value);
     [DllImport("user32.dll")] public static extern bool GetLayeredWindowAttributes(IntPtr window, out uint color, out byte alpha, out uint flags);
     [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr window, IntPtr after, int x, int y, int width, int height, uint flags);
     [DllImport("user32.dll")] public static extern IntPtr SendMessage(IntPtr window, uint message, IntPtr wparam, IntPtr lparam);
@@ -159,7 +160,12 @@ if ($Action -in @('inspectDevtools','closeDevtools')) {
 $monitorInfo=New-Object MiniProbe+MONITORINFO
 $monitorInfo.Size=[Runtime.InteropServices.Marshal]::SizeOf($monitorInfo)
 [void][MiniProbe]::GetMonitorInfo([MiniProbe]::MonitorFromWindow($browser,2),[ref]$monitorInfo)
-if ($Action -like 'zoom*' -or $Action -eq 'scrollPage') {
+if ($Action -eq 'resetExtendedStyles') {
+    foreach($targetWindow in @($browser,$controls)) {
+        $style=[MiniProbe]::GetWindowLong($targetWindow,-20)
+        [void][MiniProbe]::SetWindowLong($targetWindow,-20,(($style -band (-bnot 0x80000)) -bor 0x40000))
+    }
+} elseif ($Action -like 'zoom*' -or $Action -eq 'scrollPage') {
     $targetWindow=if($Action -eq 'zoomControl'){$controls}else{$browser}
     $inputRect=New-Object MiniProbe+RECT
     [void][MiniProbe]::GetWindowRect($targetWindow,[ref]$inputRect)
