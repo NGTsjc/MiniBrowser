@@ -29,6 +29,7 @@ pub struct DragShape {
     pub arc: bool,
     pub points: Vec<[i32; 2]>,
     pub grip: [i32; 2],
+    pub panel_inset: u32,
 }
 
 pub fn effective_radius(requested: u32, width: i32, height: i32, scale: f64) -> i32 {
@@ -61,6 +62,7 @@ pub fn drag_shape(radius: i32, scale: f64) -> DragShape {
             arc: false,
             points: vec![],
             grip: [grip, grip],
+            panel_inset: panel_inset(radius, scale),
         };
     }
     let half = p::ARC_THICKNESS * scale / 2.;
@@ -111,6 +113,7 @@ pub fn drag_shape(radius: i32, scale: f64) -> DragShape {
         arc: true,
         points,
         grip: [(center.round() as i32 - x), (center.round() as i32 - y)],
+        panel_inset: panel_inset(radius, scale),
     }
 }
 
@@ -135,7 +138,7 @@ mod tests {
     #[test]
     fn drag_interaction_and_panel_follow_all_supported_shapes_and_dpis() {
         for scale in [1., 1.25, 1.5, 2., 3.] {
-            for (width, height) in [(280., 200.), (960., 600.)] {
+            for (width, height) in [(p::MIN_WIDTH, p::MIN_HEIGHT), (280., 200.), (960., 600.)] {
                 let w = (width * scale) as i32;
                 let h = (height * scale) as i32;
                 for requested in 0..=p::MAX_CORNER_RADIUS {

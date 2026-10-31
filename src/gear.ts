@@ -2,10 +2,20 @@ import { invoke } from '@tauri-apps/api/core';
 import type { DragShape } from './types';
 
 export function renderDragShape(toolbar: HTMLElement, shape: DragShape) {
+  const scale = window.devicePixelRatio;
+  const root = document.documentElement.style;
+  root.setProperty('--drag-left', `${shape.x / scale}px`);
+  root.setProperty('--drag-top', `${shape.y / scale}px`);
+  root.setProperty('--drag-width', `${shape.width / scale}px`);
+  root.setProperty('--drag-height', `${shape.height / scale}px`);
+  root.setProperty('--drag-bottom', `${(shape.y + shape.height) / scale}px`);
+  root.setProperty('--panel-safe', `${shape.panelInset / scale}px`);
+  toolbar.style.clipPath = shape.arc
+    ? `polygon(${shape.points.map(([x, y]) => `${x / shape.width * 100}% ${y / shape.height * 100}%`).join(',')})`
+    : '';
   toolbar.classList.toggle('arc', shape.arc);
   toolbar.dataset.arc = String(shape.arc);
   if (!shape.arc) {
-    const scale = window.devicePixelRatio;
     toolbar.style.setProperty('--grip-x', `${shape.grip[0] / scale}px`);
     toolbar.style.setProperty('--grip-y', `${shape.grip[1] / scale}px`);
     toolbar.style.setProperty('--grip-room', `${2 * Math.min(shape.width - shape.grip[0], shape.height - shape.grip[1]) / scale}px`);

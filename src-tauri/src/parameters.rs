@@ -19,9 +19,6 @@ pub const ARC_THICKNESS: f64 = 24.;
 pub const ARC_LENGTH: f64 = 64.;
 pub const ARC_INSET: f64 = 8.;
 pub const PANEL_PADDING: f64 = 8.;
-pub const PANEL_WIDTH: f64 = 400.;
-pub const PANEL_HEIGHT: f64 = 620.;
-pub const PANEL_RADIUS: f64 = 9.;
 pub const MENU_WIDTH: f64 = 224.;
 pub const MENU_HEIGHT: f64 = 281.;
 pub const MENU_RADIUS: f64 = 8.;
@@ -51,8 +48,7 @@ pub fn public() -> Value {
         "dragWidth": DRAG_SIZE, "dragHeight": DRAG_SIZE,
         "arcThreshold": ARC_THRESHOLD, "arcThickness": ARC_THICKNESS,
         "arcLength": ARC_LENGTH, "arcInset": ARC_INSET,
-        "panelPadding": PANEL_PADDING, "panelWidth": PANEL_WIDTH, "panelHeight": PANEL_HEIGHT,
-        "panelRadius": PANEL_RADIUS, "menuWidth": MENU_WIDTH, "menuHeight": MENU_HEIGHT,
+        "panelPadding": PANEL_PADDING, "menuWidth": MENU_WIDTH, "menuHeight": MENU_HEIGHT,
         "menuRadius": MENU_RADIUS, "resizeGrip": RESIZE_GRIP
     }})
 }

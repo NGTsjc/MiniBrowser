@@ -4,7 +4,7 @@ param(
     [int]$ClickX=100,
     [int]$ClickY=35,
     [ValidateRange(1,8)][int]$WheelTicks=1,
-    [ValidateSet('inspect','resetExtendedStyles','clickGear','dragToolbar','resize','edgeResize','hotkey','close','moveBeyond','releaseBounds','inspectMenu','dismissMenu','menuRefresh','menuHide','menuRestore','menuClose','menuRestart','clickOutsideMenu','inspectDevtools','closeDevtools','rightClickPage','rightClickControl','ctrlClickPage','middleClickPage','clickPage','openTrayMenu','trayReset','captureWindow','minimumResize','cornerResizeTL','cornerResizeTR','cornerResizeBL','cornerResizeBR','inspectChildren','zoomIn','zoomOut','zoomReset','zoomPlus','zoomMinus','zoomControl','scrollPage')][string]$Action='inspect'
+    [ValidateSet('inspect','resetExtendedStyles','clickGear','dragToolbar','resize','edgeResize','hotkey','close','moveBeyond','releaseBounds','inspectMenu','dismissMenu','menuRefresh','menuHide','menuRestore','menuClose','menuRestart','clickOutsideMenu','inspectDevtools','closeDevtools','rightClickPage','rightClickControl','ctrlClickPage','middleClickPage','clickPage','openTrayMenu','trayReset','captureWindow','minimumResize','compactResize','cornerResizeTL','cornerResizeTR','cornerResizeBL','cornerResizeBR','inspectChildren','zoomIn','zoomOut','zoomReset','zoomPlus','zoomMinus','zoomControl','scrollPage')][string]$Action='inspect'
 )
 $ErrorActionPreference='Stop'
 [Console]::OutputEncoding=[System.Text.Encoding]::UTF8
@@ -286,10 +286,11 @@ if ($Action -eq 'resetExtendedStyles') {
     }
 } elseif ($Action -eq 'close') {
     [void][MiniProbe]::SendMessage($browser,0x10,[IntPtr]::Zero,[IntPtr]::Zero)
-} elseif ($Action -eq 'resize' -or $Action -eq 'minimumResize') {
+} elseif ($Action -eq 'resize' -or $Action -eq 'minimumResize' -or $Action -eq 'compactResize') {
     $scale=[MiniProbe]::GetDpiForWindow($browser)/96.0
     $targetWidth=560; $targetHeight=500
     if ($Action -eq 'minimumResize') { $targetWidth=280; $targetHeight=200 }
+    if ($Action -eq 'compactResize') { $targetWidth=80; $targetHeight=40 }
     [void][MiniProbe]::SetWindowPos($browser,[IntPtr]::Zero,0,0,[int]($targetWidth*$scale),[int]($targetHeight*$scale),0x16)
 } elseif ($Action -eq 'clickGear' -or $Action -eq 'dragToolbar' -or $Action -eq 'edgeResize' -or $Action -like 'cornerResize*') {
     $rect=New-Object MiniProbe+RECT

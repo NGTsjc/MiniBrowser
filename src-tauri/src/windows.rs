@@ -205,7 +205,8 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
     .inner_size(p::DRAG_SIZE, p::DRAG_SIZE)
     .decorations(false)
     .shadow(false)
-    .resizable(false)
+    // Its native border forwards resize gestures to the browser host.
+    .resizable(true)
     .maximizable(false)
     .minimizable(false)
     .skip_taskbar(true)
@@ -406,22 +407,8 @@ fn sync_controls_inner(app: &AppHandle, force_corners: bool) -> Result<(), Strin
     let open = app.state::<AppState>().panel_open.load(Ordering::SeqCst);
     let radius = current_radius(app, size.width as i32, size.height as i32, scale);
     let shape = cached_drag_shape(app, radius, scale);
-    let padding = layout::panel_inset(radius, scale);
     let (x, y, width, height) = if open {
-        let width = size
-            .width
-            .saturating_sub(2 * padding)
-            .min((p::PANEL_WIDTH * scale) as u32);
-        let height = size
-            .height
-            .saturating_sub(2 * padding)
-            .min((p::PANEL_HEIGHT * scale) as u32);
-        (
-            position.x + ((size.width - width) / 2) as i32,
-            position.y + ((size.height - height) / 2) as i32,
-            width,
-            height,
-        )
+        (position.x, position.y, size.width, size.height)
     } else {
         (
             position.x + shape.x,

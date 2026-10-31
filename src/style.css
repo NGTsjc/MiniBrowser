@@ -8,10 +8,12 @@ button { cursor: pointer; border: 1px solid var(--border); border-radius: 7px; b
 button:hover { background: var(--accent-hover); }
 button:disabled { opacity: .5; cursor: wait; }
 button:focus-visible, input:focus-visible { outline: 2px solid var(--accent-ink); outline-offset: 2px; }
-.toolbar { position: relative; width: 100vw; height: 100vh; display: flex; align-items: center; background: var(--surface); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); cursor: grab; touch-action: none; }
+.toolbar { position: fixed; left: 0; top: 0; z-index: 10; width: var(--drag-width, 100vw); height: var(--drag-height, 100vh); display: flex; align-items: center; background: var(--surface); border-right: 1px solid var(--border); border-bottom: 1px solid var(--border); cursor: grab; touch-action: none; }
+.panel-open .toolbar { left: var(--drag-left, 0px); top: var(--drag-top, 0px); }
+.context-menu-open .toolbar { visibility: hidden; }
 .toolbar:active { cursor: grabbing; }
 .drag-grip { position: absolute; left: var(--grip-x, 50%); top: var(--grip-y, 50%); transform: translate(-50%, -50%); text-align: center; color: var(--muted); font-size: min(21px, var(--grip-room, 21px)); line-height: 1; pointer-events: none; }
-.panel { height: 100vh; width: 100%; background: var(--surface); border: 1px solid var(--border); border-radius: var(--panel-radius); overflow: hidden; display: flex; flex-direction: column; }
+.panel { height: 100vh; width: 100%; background: var(--surface); overflow: hidden; display: flex; flex-direction: column; }
 header { display: flex; align-items: center; justify-content: space-between; padding: 21px 21px 15px; gap: 10px; flex-shrink: 0; }
 .eyebrow { font-size: 9px; letter-spacing: 2.2px; color: var(--muted); font-weight: 600; }
 h1 { font-size: 23px; font-weight: 600; letter-spacing: -.5px; margin: 6px 0 0; }
@@ -85,3 +87,27 @@ input[type=color] { width: 40px; height: 38px; padding: 3px; border: 1px solid v
 .toolbar svg { width: 100%; height: 100%; pointer-events: none; }
 .drag-surface { fill: var(--surface); stroke: var(--border); stroke-width: 2; }
 .drag-texture { fill: var(--muted); }
+
+/* The native settings surface fills the host. Keep form controls inside its
+   rounded outline and leave the fixed drag handle above the scrolling content. */
+.panel header { padding: max(21px, calc(var(--drag-bottom, 36px) + 12px)) max(21px, var(--panel-safe, 0px)) 15px; flex-wrap: wrap; }
+.panel .scroll-area { padding-left: max(21px, var(--panel-safe, 0px)); padding-right: max(21px, var(--panel-safe, 0px)); }
+.panel .form-footer { padding: 13px max(21px, var(--panel-safe, 0px)) max(13px, var(--panel-safe, 0px)); flex-wrap: wrap; }
+@media (max-width: 360px) {
+  .panel header, .panel .scroll-area, .panel .form-footer { padding-left: max(8px, var(--panel-safe, 0px)); padding-right: max(8px, var(--panel-safe, 0px)); }
+  .theme-editor, .shortcut-row, .setting-row, .slider-heading, .confirm-box > div { flex-wrap: wrap; }
+  .theme-editor input[type=text] { min-width: 0; max-width: 100%; }
+  .panel button { min-width: 0; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+}
+@media (max-height: 240px) {
+  .panel { display: block; overflow-x: hidden; overflow-y: auto; scrollbar-width: thin; }
+  .panel form { display: block; }
+  .panel .scroll-area { overflow: visible; }
+  .panel .form-footer button { padding-top: 5px; padding-bottom: 5px; }
+}
+@media (max-width: 160px) {
+  .panel { scrollbar-width: none; }
+  .panel::-webkit-scrollbar { display: none; }
+  .panel .form-footer { padding-left: calc(var(--drag-left, 0px) + var(--drag-width, 36px) + 8px); }
+  .panel .form-footer button { width: 100%; padding: 3px 0; }
+}

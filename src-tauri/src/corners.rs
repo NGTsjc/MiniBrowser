@@ -127,7 +127,14 @@ pub fn install_controls(app: &AppHandle, controls: &tauri::WebviewWindow) -> Res
                     } else if message == WM_NCLBUTTONDOWN
                         && matches!(
                             wparam.0 as u32,
-                            HTTOPLEFT | HTTOPRIGHT | HTBOTTOMLEFT | HTBOTTOMRIGHT
+                            HTLEFT
+                                | HTRIGHT
+                                | HTTOP
+                                | HTBOTTOM
+                                | HTTOPLEFT
+                                | HTTOPRIGHT
+                                | HTBOTTOMLEFT
+                                | HTBOTTOMRIGHT
                         )
                     {
                         let _ = windows::Win32::UI::Input::KeyboardAndMouse::ReleaseCapture();
@@ -174,15 +181,12 @@ pub fn resize_hit_test(
         .effective_corner_radius
         .lock()
         .unwrap();
-    if radius == 0 {
-        return None;
-    }
     let mut rect = RECT::default();
     unsafe { GetWindowRect(hwnd, &mut rect) }.ok()?;
     let scale = unsafe { GetDpiForWindow(hwnd) } as f64 / 96.;
     let x = (point.0 as u16 as i16) as i32 - rect.left;
     let y = ((point.0 >> 16) as u16 as i16) as i32 - rect.top;
-    curved_resize_hit(
+    window_resize_hit(
         x,
         y,
         rect.right - rect.left,
@@ -196,6 +200,53 @@ pub fn resize_hit_test(
         physical_resize_grip(scale),
     )
     .map(|hit| LRESULT(hit as isize))
+}
+
+#[cfg(any(windows, test))]
+fn window_resize_hit(
+    x: i32,
+    y: i32,
+    width: i32,
+    height: i32,
+    radius: i32,
+    grip: i32,
+) -> Option<i32> {
+    if let Some(hit) = curved_resize_hit(x, y, width, height, radius, grip) {
+        return Some(hit);
+    }
+    if x < 0 || y < 0 || x >= width || y >= height {
+        return None;
+    }
+    let left = x < grip;
+    let right = x >= width - grip;
+    let top = y < grip;
+    let bottom = y >= height - grip;
+    if radius == 0 {
+        match (left, right, top, bottom) {
+            (true, _, true, _) => return Some(13),
+            (_, true, true, _) => return Some(14),
+            (true, _, _, true) => return Some(16),
+            (_, true, _, true) => return Some(17),
+            _ => {}
+        }
+    }
+    if y >= radius && y < height - radius {
+        if left {
+            return Some(10);
+        }
+        if right {
+            return Some(11);
+        }
+    }
+    if x >= radius && x < width - radius {
+        if top {
+            return Some(12);
+        }
+        if bottom {
+            return Some(15);
+        }
+    }
+    None
 }
 
 #[cfg(any(windows, test))]
@@ -235,6 +286,32 @@ fn curved_resize_hit(
 #[cfg(test)]
 mod tests {
     use super::curved_resize_hit;
+    #[test]
+    fn settings_resize_border_covers_straight_edges_without_claiming_content_or_cutout_corners() {
+        for (x, y, hit) in [
+            (1, 150, 10),
+            (398, 150, 11),
+            (200, 1, 12),
+            (200, 298, 15),
+            (1, 1, 13),
+            (398, 1, 14),
+            (1, 298, 16),
+            (398, 298, 17),
+        ] {
+            assert_eq!(super::window_resize_hit(x, y, 400, 300, 0, 6), Some(hit));
+        }
+        for radius in [0, 32, 128] {
+            assert_eq!(
+                super::window_resize_hit(200, 150, 400, 300, radius, 6),
+                None
+            );
+            assert_eq!(
+                super::window_resize_hit(1, 150, 400, 300, radius, 6),
+                Some(10)
+            );
+        }
+        assert_eq!(super::window_resize_hit(1, 1, 400, 300, 32, 6), None);
+    }
     #[test]
     fn resize_grips_follow_curved_boundary_without_covering_web_content() {
         for (x, y, hit) in [(12, 12, 13), (387, 12, 14), (12, 287, 16), (387, 287, 17)] {
@@ -357,9 +434,11 @@ mod native {
     // A parent-only hit test cannot receive clicks consumed by WebView2 HWNDs.
     fn resize_band(
         app: &AppHandle,
-        main: HWND,
+        host: HWND,
+        target: HWND,
         geometry: Geometry,
         scale: f64,
+        enabled: bool,
     ) -> Result<(), String> {
         use windows::{
             core::w,
@@ -376,11 +455,11 @@ mod native {
             id: usize,
             data: usize,
         ) -> LRESULT {
-            if let Ok(main) = GetParent(hwnd) {
+            {
+                let (app, target) = &*(data as *const (AppHandle, isize));
+                let main = HWND(*target as *mut _);
                 if message == WM_NCHITTEST || message == WM_NCLBUTTONDOWN {
-                    if let Some(hit) =
-                        super::resize_hit_test(&*(data as *const AppHandle), main, lparam)
-                    {
+                    if let Some(hit) = super::resize_hit_test(app, main, lparam) {
                         if message == WM_NCHITTEST {
                             return hit;
                         }
@@ -397,20 +476,23 @@ mod native {
             }
             if message == WM_NCDESTROY {
                 let _ = RemoveWindowSubclass(hwnd, Some(procedure), id);
-                drop(Box::from_raw(data as *mut AppHandle));
+                drop(Box::from_raw(data as *mut (AppHandle, isize)));
             }
             DefSubclassProc(hwnd, message, wparam, lparam)
         }
         let child = unsafe {
             FindWindowExW(
-                Some(main),
+                Some(host),
                 None,
                 w!("TAURI_DRAG_RESIZE_BORDERS"),
                 w!("TAURI_DRAG_RESIZE_WINDOW"),
             )
         }
         .map_err(|_| "无法找到原生窗口缩放边缘".to_string())?;
-        let main_rect = bounds(main)?;
+        if !enabled {
+            return Region::new(0, 0, 0)?.apply(child);
+        }
+        let main_rect = bounds(host)?;
         let child_rect = bounds(child)?;
         let dx = child_rect.left - main_rect.left;
         let dy = child_rect.top - main_rect.top;
@@ -430,7 +512,7 @@ mod native {
             }
             let mut existing = 0_usize;
             if !GetWindowSubclass(child, Some(procedure), 0x4d44, Some(&mut existing)).as_bool() {
-                let data = Box::into_raw(Box::new(app.clone()));
+                let data = Box::into_raw(Box::new((app.clone(), target.0 as isize)));
                 if !SetWindowSubclass(child, Some(procedure), 0x4d44, data as usize).as_bool() {
                     drop(Box::from_raw(data));
                     return Err("无法安装圆角缩放边缘".into());
@@ -477,8 +559,6 @@ mod native {
             control_height: control.bottom - control.top,
             overlay_radius: (if menu {
                 crate::parameters::MENU_RADIUS
-            } else if panel {
-                crate::parameters::PANEL_RADIUS
             } else {
                 0.
             } * scale)
@@ -528,7 +608,8 @@ mod native {
             main_region.apply(main)?;
             crate::test_support::fail("control_region")?;
             control_region.apply(overlay)?;
-            resize_band(app, main, geometry, scale)
+            resize_band(app, main, main, geometry, scale, true)?;
+            resize_band(app, overlay, main, geometry, scale, panel && !menu)
         })();
         if let Err(error) = result {
             LAST.with(|last| *last.borrow_mut() = None);

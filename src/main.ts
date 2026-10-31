@@ -120,7 +120,6 @@ if (view !== 'controls') {
     notice.textContent = snapshot.warning ?? '';
     confirmation.hidden = true;
     panel.hidden = false;
-    toolbar.hidden = true;
     document.body.classList.add('panel-open');
     setBusy(false);
     setTimeout(() => url.focus(), 60);

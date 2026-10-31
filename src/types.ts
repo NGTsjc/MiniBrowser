@@ -36,8 +36,8 @@ export interface Parameters {
   };
   layout: {
     dragWidth: number; dragHeight: number; arcThreshold: number; arcThickness: number;
-    arcLength: number; arcInset: number; panelPadding: number; panelWidth: number;
-    panelHeight: number; panelRadius: number; menuWidth: number; menuHeight: number;
+    arcLength: number; arcInset: number; panelPadding: number;
+    menuWidth: number; menuHeight: number;
     menuRadius: number; resizeGrip: number;
   };
 }
@@ -45,4 +45,5 @@ export interface Parameters {
 export interface DragShape {
   x: number; y: number; width: number; height: number;
   arc: boolean; points: [number, number][]; grip: [number, number];
+  panelInset: number;
 }
