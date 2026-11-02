@@ -7,6 +7,7 @@ mod config;
 mod context_menu;
 mod control_layout;
 mod corners;
+mod drag_position;
 mod lifecycle;
 mod localization;
 mod navigation;
@@ -62,6 +63,7 @@ fn main() {
             commands::apply_settings,
             commands::preview_opacity,
             commands::preview_corner_radius,
+            commands::preview_drag_position,
             commands::cancel_settings,
             commands::open_settings,
             commands::drag_window,

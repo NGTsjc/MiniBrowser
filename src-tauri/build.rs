@@ -6,6 +6,7 @@ fn main() {
             "apply_settings",
             "preview_opacity",
             "preview_corner_radius",
+            "preview_drag_position",
             "cancel_settings",
             "open_settings",
             "drag_window",

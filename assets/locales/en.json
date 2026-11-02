@@ -1,8 +1,8 @@
 {
   "meta.languageTag": "en",
   "guide.title": "A little space for the web.",
-  "guide.intro": "Right-click this page or the top-left drag handle, then open Settings and enter a URL.",
-  "guide.menu": "Right-click the top-left handle to open the menu",
+  "guide.intro": "Right-click this page or the drag handle, then open Settings and enter a URL.",
+  "guide.menu": "Right-click the drag handle to open the menu",
   "guide.context": "Webpage context menus keep their usual behavior",
   "guide.resize": "Drag the window edges to resize",
   "guide.recover": "Use the tray or your shortcut to show a hidden window",
@@ -138,5 +138,11 @@
   "window.controlsTitle": "MiniBrowser Settings",
   "errors.localePath": "The language file must be a relative path inside MiniBrowser.data",
   "errors.localeObject": "The language file must contain a JSON object",
-  "errors.localeOutside": "The language file resolves outside MiniBrowser.data"
+  "errors.localeOutside": "The language file resolves outside MiniBrowser.data",
+  "settings.dragPosition": "Drag handle position",
+  "positions.topLeft": "Top left",
+  "positions.topRight": "Top right",
+  "positions.bottomLeft": "Bottom left",
+  "positions.bottomRight": "Bottom right",
+  "errors.dragRollback": "{error}; Could not restore window controls: {rollback}"
 }

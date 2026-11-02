@@ -36,6 +36,7 @@ pub fn defaults() -> Settings {
         pause_media_on_hide: true,
         accent_color: DEFAULT_ACCENT.into(),
         corner_radius: 0,
+        drag_position: crate::control_layout::DragPosition::default(),
         language_file: None,
     }
 }
@@ -44,7 +45,8 @@ pub fn public() -> Value {
     json!({"defaults": defaults(), "limits": {
         "minWidth": MIN_WIDTH, "minHeight": MIN_HEIGHT, "maxSize": MAX_SIZE,
         "minOpacity": MIN_OPACITY, "maxOpacity": MAX_OPACITY,
-        "minCornerRadius": 0, "maxCornerRadius": MAX_CORNER_RADIUS, "cornerRadiusStep": 1
+        "minCornerRadius": 0, "maxCornerRadius": MAX_CORNER_RADIUS, "cornerRadiusStep": 1,
+        "dragPositions": crate::control_layout::DragPosition::ALL
     }, "layout": {
         "dragWidth": DRAG_SIZE, "dragHeight": DRAG_SIZE,
         "arcThreshold": ARC_THRESHOLD, "arcThickness": ARC_THICKNESS,

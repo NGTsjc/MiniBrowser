@@ -146,6 +146,21 @@ pub fn preview_corner_radius(
 }
 
 #[tauri::command]
+pub fn preview_drag_position(
+    caller: WebviewWindow,
+    app: AppHandle,
+    position: crate::control_layout::DragPosition,
+    epoch: Option<u64>,
+) -> Result<(), String> {
+    authorize(&caller)?;
+    crate::ui_thread::run(&app, move |app| {
+        let _operation = crate::operation::Guard::begin(app)?;
+        crate::operation::validate_preview(app, epoch)?;
+        crate::drag_position::preview(app, position)
+    })
+}
+
+#[tauri::command]
 pub fn cancel_settings(
     caller: WebviewWindow,
     app: AppHandle,
@@ -159,7 +174,8 @@ pub fn cancel_settings(
         state.preview_epoch.fetch_add(1, Ordering::SeqCst);
         let settings = state.settings.lock().unwrap().clone();
         let opacity = windows::set_opacity(app, settings.opacity);
-        let corners = crate::corners::preview(app, settings.corner_radius);
+        let corners =
+            crate::drag_position::apply(app, settings.corner_radius, settings.drag_position);
         opacity?;
         corners?;
         windows::close_panel(app)

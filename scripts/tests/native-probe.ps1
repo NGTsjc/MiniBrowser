@@ -4,7 +4,9 @@ param(
     [int]$ClickX=100,
     [int]$ClickY=35,
     [ValidateRange(1,8)][int]$WheelTicks=1,
-    [ValidateSet('inspect','resetExtendedStyles','clickGear','dragToolbar','resize','edgeResize','hotkey','close','moveBeyond','releaseBounds','inspectMenu','dismissMenu','menuRefresh','menuHide','menuRestore','menuClose','menuRestart','clickOutsideMenu','inspectDevtools','closeDevtools','rightClickPage','rightClickControl','ctrlClickPage','middleClickPage','clickPage','openTrayMenu','trayReset','captureWindow','minimumResize','compactResize','cornerResizeTL','cornerResizeTR','cornerResizeBL','cornerResizeBR','inspectChildren','zoomIn','zoomOut','zoomReset','zoomPlus','zoomMinus','zoomControl','scrollPage')][string]$Action='inspect'
+    [string]$ReadySignal='',
+    [string]$StopSignal='',
+    [ValidateSet('inspect','monitorStyles','resetWindowStyles','altF4','resetExtendedStyles','clickGear','dragToolbar','resize','edgeResize','hotkey','close','moveBeyond','releaseBounds','inspectMenu','dismissMenu','menuRefresh','menuHide','menuRestore','menuClose','menuRestart','clickOutsideMenu','inspectDevtools','closeDevtools','rightClickPage','rightClickControl','ctrlClickPage','middleClickPage','clickPage','openTrayMenu','trayReset','captureWindow','minimumResize','compactResize','cornerResizeTL','cornerResizeTR','cornerResizeBL','cornerResizeBR','inspectChildren','zoomIn','zoomOut','zoomReset','zoomPlus','zoomMinus','zoomControl','scrollPage')][string]$Action='inspect'
 )
 $ErrorActionPreference='Stop'
 [Console]::OutputEncoding=[System.Text.Encoding]::UTF8
@@ -30,6 +32,8 @@ public static class MiniProbe {
     [DllImport("user32.dll")] public static extern bool GetWindowRect(IntPtr window, out RECT rect);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr window);
+    [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
+    [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr window,int attribute,out int value,int size);
     [DllImport("user32.dll")] public static extern int GetWindowLong(IntPtr window, int index);
     [DllImport("user32.dll")] public static extern int SetWindowLong(IntPtr window, int index, int value);
     [DllImport("user32.dll")] public static extern bool GetLayeredWindowAttributes(IntPtr window, out uint color, out byte alpha, out uint flags);
@@ -121,6 +125,25 @@ public static class MiniProbe {
         }, IntPtr.Zero);
         return windows;
     }
+    public static Dictionary<string,int> MonitorStyles(IntPtr browser,IntPtr controls,string stop) {
+        var result=new Dictionary<string,int>{{"samples",0},{"captionSamples",0},{"edgeSamples",0},{"resizeMissing",0},{"layeredMissing",0},{"visibilityChanges",0}};
+        bool previous=IsWindowVisible(browser);
+        var timer=System.Diagnostics.Stopwatch.StartNew();
+        while(timer.ElapsedMilliseconds<15000 && !System.IO.File.Exists(stop)) {
+            foreach(var window in new[]{browser,controls}) {
+                int style=GetWindowLong(window,-16),extended=GetWindowLong(window,-20);
+                result["samples"]++;
+                if((style&0x00c30000)!=0)result["captionSamples"]++;
+                if((extended&0x00060201)!=0)result["edgeSamples"]++;
+                if((style&0x00040000)==0)result["resizeMissing"]++;
+                if((extended&0x00080000)==0)result["layeredMissing"]++;
+            }
+            bool visible=IsWindowVisible(browser);
+            if(visible!=previous){result["visibilityChanges"]++;previous=visible;}
+            System.Threading.Thread.Sleep(1);
+        }
+        return result;
+    }
 }
 '@
 [void][MiniProbe]::SetThreadDpiAwarenessContext([IntPtr](-4))
@@ -129,6 +152,11 @@ if (-not $hosts.ContainsKey('MiniBrowser')) { throw 'Browser host not found' }
 $browser=$hosts['MiniBrowser']
 $controlTitle=$hosts.Keys | Where-Object { $_ -like 'MiniBrowser *' } | Select-Object -First 1
 $controls=$hosts[$controlTitle]
+if ($Action -eq 'monitorStyles') {
+    [IO.File]::WriteAllText($ReadySignal,'ready')
+    [MiniProbe]::MonitorStyles($browser,$controls,$StopSignal) | ConvertTo-Json -Compress
+    return
+}
 if ($Action -eq 'inspectChildren') {
     @{browserChildren=[MiniProbe]::Children($browser);controlChildren=[MiniProbe]::Children($controls);processId=$AppProcessId} | ConvertTo-Json -Compress
     return
@@ -160,10 +188,19 @@ if ($Action -in @('inspectDevtools','closeDevtools')) {
 $monitorInfo=New-Object MiniProbe+MONITORINFO
 $monitorInfo.Size=[Runtime.InteropServices.Marshal]::SizeOf($monitorInfo)
 [void][MiniProbe]::GetMonitorInfo([MiniProbe]::MonitorFromWindow($browser,2),[ref]$monitorInfo)
-if ($Action -eq 'resetExtendedStyles') {
+if ($Action -in @('resetExtendedStyles','resetWindowStyles')) {
     foreach($targetWindow in @($browser,$controls)) {
+        if ($Action -eq 'resetWindowStyles') {
+            $windowStyle=[MiniProbe]::GetWindowLong($targetWindow,-16)
+            [void][MiniProbe]::SetWindowLong($targetWindow,-16,($windowStyle -bor 0x00cf0000))
+        }
         $style=[MiniProbe]::GetWindowLong($targetWindow,-20)
         [void][MiniProbe]::SetWindowLong($targetWindow,-20,(($style -band (-bnot 0x80000)) -bor 0x40000))
+        if ($Action -eq 'resetWindowStyles') {
+            $extendedStyle=[MiniProbe]::GetWindowLong($targetWindow,-20)
+            [void][MiniProbe]::SetWindowLong($targetWindow,-20,($extendedStyle -bor 0x00060301))
+            [void][MiniProbe]::SetWindowPos($targetWindow,[IntPtr]::Zero,0,0,0,0,0x37)
+        }
     }
 } elseif ($Action -like 'zoom*' -or $Action -eq 'scrollPage') {
     $targetWindow=if($Action -eq 'zoomControl'){$controls}else{$browser}
@@ -284,6 +321,19 @@ if ($Action -eq 'resetExtendedStyles') {
         [System.Threading.Thread]::Sleep(180)
         [void][MiniProbe]::SetCursorPos($cursor.X,$cursor.Y)
     }
+} elseif ($Action -eq 'altF4') {
+    [void][MiniProbe]::SetForegroundWindow($browser)
+    [System.Threading.Thread]::Sleep(150)
+    if ([MiniProbe]::GetForegroundWindow() -ne $browser) { throw 'Test browser is not foreground; Alt+F4 was not sent' }
+    try {
+        [MiniProbe]::keybd_event(0x12,0,0,[UIntPtr]::Zero)
+        [MiniProbe]::keybd_event(0x73,0,0,[UIntPtr]::Zero)
+        [System.Threading.Thread]::Sleep(100)
+    } finally {
+        [MiniProbe]::keybd_event(0x73,0,2,[UIntPtr]::Zero)
+        [MiniProbe]::keybd_event(0x12,0,2,[UIntPtr]::Zero)
+    }
+    return
 } elseif ($Action -eq 'close') {
     [void][MiniProbe]::SendMessage($browser,0x10,[IntPtr]::Zero,[IntPtr]::Zero)
 } elseif ($Action -eq 'resize' -or $Action -eq 'minimumResize' -or $Action -eq 'compactResize') {
@@ -350,6 +400,8 @@ foreach($entry in $hosts.GetEnumerator()) {
     $point=($rect.Left+1) -bor (($rect.Top+[int](($rect.Bottom-$rect.Top)/2)) -shl 16)
     $hit=[MiniProbe]::SendMessage($entry.Value,0x84,[IntPtr]::Zero,[IntPtr]$point)
     $output[$entry.Key]=@{ x=$rect.Left; y=$rect.Top; width=$rect.Right-$rect.Left; height=$rect.Bottom-$rect.Top; visible=[MiniProbe]::IsWindowVisible($entry.Value); alpha=if($layered){[int]$alpha}else{255}; style=[MiniProbe]::GetWindowLong($entry.Value,-16); extendedStyle=[MiniProbe]::GetWindowLong($entry.Value,-20); edgeHit=$hit.ToInt64() }
+    $nonclientRendering=0
+    if ([MiniProbe]::DwmGetWindowAttribute($entry.Value,1,[ref]$nonclientRendering,4) -eq 0) { $output[$entry.Key].nonclientRendering=[bool]$nonclientRendering }
     $region=[MiniProbe]::CreateRectRgn(0,0,0,0)
     try {
         $kind=[MiniProbe]::GetWindowRgn($entry.Value,$region)

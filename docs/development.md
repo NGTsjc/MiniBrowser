@@ -25,6 +25,8 @@ pnpm dev
 | `pnpm test:native` | Rust 单元测试 |
 | `pnpm test:unit` | 版本脚本、预览调度与文案格式化单元测试 |
 | `pnpm test:localization` | 英文／中文覆盖、重启生效、纯文本转义与便携路径检查；先构建调试版 |
+| `pnpm test:drag-position` | 四角拖动区、镜像裁剪、草稿事务、极小窗口及重启持久化检查；先构建调试版 |
+| `pnpm test:appearance` | 下拉列表交互、显隐原生边框样式采样、缩放及 Alt+F4；先构建调试版 |
 | `pnpm test:maintenance` | 维护专项原生故障／竞争检查，先运行 `build:debug` |
 | `pnpm test:performance` | 三轮隔离性能采样，先运行 `build:debug`，结果保存在 `.cache/maintenance-performance/` |
 | `cargo fmt --manifest-path src-tauri/Cargo.toml` | 格式化 Rust |
@@ -51,9 +53,10 @@ pnpm dev
 | 默认值、配置版本、范围和窗口／浮层尺寸 | `src-tauri/src/parameters.rs`，`defaults()` 定义默认设置；前端自动读取 |
 | 圆角上限、拖动块大小、弧条切换阈值 | 同上：`MAX_CORNER_RADIUS`、`DRAG_SIZE`、`ARC_THRESHOLD` |
 | 配置读取、校验与原子保存 | `src-tauri/src/config.rs` |
-| 拖动区与面板几何、原生圆角裁剪 | `src-tauri/src/control_layout.rs`、`corners.rs` |
+| 拖动区与面板几何、原生圆角裁剪 | `src-tauri/src/control_layout.rs`、`corners.rs`；四角位置与圆角预览事务见 `drag_position.rs` |
 | 窗口生命周期与浮层同步 | `src-tauri/src/windows.rs`、`lifecycle.rs` |
 | 设置界面、样式、主题 | `src/main.ts`、`style.css`、`theme.ts` |
+| 拖动位置下拉列表／无边框原生保护 | `src/position-select.ts`、`position-select.css`；`src-tauri/src/appearance.rs` |
 | 英文和自定义文案 | `assets/locales/en.json`、完整中文示例 `locale.example.json`；使用说明见 [自定义文案](localization.md) |
 | 右键菜单／托盘 | 前后端的 `context-menu.*`／`context_menu.rs`，以及 `tray.rs` |
 | 应用／托盘图标 | `src-tauri/icons/icon.ico`；源图位于 `assets/branding/` |

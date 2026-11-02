@@ -23,6 +23,8 @@ pub struct Settings {
     pub accent_color: String,
     pub corner_radius: u32,
     #[serde(default)]
+    pub drag_position: crate::control_layout::DragPosition,
+    #[serde(default)]
     pub language_file: Option<String>,
 }
 
@@ -213,6 +215,12 @@ impl PortableStore {
         }
         read!("cornerRadius", corner_radius, u32, |v: &u32| *v
             <= p::MAX_CORNER_RADIUS);
+        read!(
+            "dragPosition",
+            drag_position,
+            crate::control_layout::DragPosition,
+            |_: &crate::control_layout::DragPosition| true
+        );
         read!("pauseMediaOnHide", pause_media_on_hide, bool, |_: &bool| {
             true
         });
@@ -354,6 +362,41 @@ fn atomic_replace(from: &Path, to: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn drag_position_defaults_per_field_and_round_trips_without_version_change() {
+        use crate::control_layout::DragPosition;
+        let store = store();
+        let path = store.root.join("settings.json");
+        fs::write(&path, r#"{"width":700}"#).unwrap();
+        assert_eq!(store.load().settings.drag_position, DragPosition::TopLeft);
+        for invalid in [
+            serde_json::json!("left"),
+            serde_json::json!(1),
+            serde_json::json!(null),
+            serde_json::json!({}),
+        ] {
+            fs::write(
+                &path,
+                serde_json::json!({"dragPosition":invalid,"width":700}).to_string(),
+            )
+            .unwrap();
+            let loaded = store.load();
+            assert_eq!(loaded.settings.drag_position, DragPosition::TopLeft);
+            assert_eq!(loaded.settings.width, 700.);
+            assert!(loaded.preserve_file);
+        }
+        for position in DragPosition::ALL {
+            let mut settings = Settings {
+                drag_position: position,
+                ..Settings::default()
+            };
+            settings.validate().unwrap();
+            store.save(&settings).unwrap();
+            assert_eq!(store.load().settings, settings);
+            assert_eq!(settings.version, p::CONFIG_VERSION);
+        }
+        fs::remove_dir_all(store.root).unwrap();
+    }
     #[test]
     fn optional_language_file_is_tolerant_and_survives_saves() {
         let store = store();

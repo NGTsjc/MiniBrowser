@@ -49,28 +49,12 @@ pub fn sync(app: &AppHandle, force: bool) -> Result<(), String> {
 }
 
 pub fn preview(app: &AppHandle, radius: u32) -> Result<(), String> {
-    if radius > crate::parameters::MAX_CORNER_RADIUS {
-        return Err(crate::localization::format(
-            "errors.radius",
-            &[("max", (crate::parameters::MAX_CORNER_RADIUS).to_string())],
-        ));
-    }
-    let state = app.state::<crate::state::AppState>();
-    let previous = std::mem::replace(&mut *state.effective_corner_radius.lock().unwrap(), radius);
-    if let Err(error) = crate::windows::sync_controls(app) {
-        *state.effective_corner_radius.lock().unwrap() = previous;
-        if let Err(rollback) = crate::windows::sync_controls(app) {
-            return Err(crate::localization::format(
-                "errors.cornerRollback",
-                &[
-                    ("error", (error).to_string()),
-                    ("rollback", (rollback).to_string()),
-                ],
-            ));
-        }
-        return Err(error);
-    }
-    Ok(())
+    let position = *app
+        .state::<crate::state::AppState>()
+        .effective_drag_position
+        .lock()
+        .unwrap();
+    crate::drag_position::apply(app, radius, position)
 }
 
 pub fn try_resize_from_drag(
@@ -585,7 +569,13 @@ mod native {
             return Ok(());
         }
         let main_region = Region::new(geometry.width, geometry.height, geometry.radius)?;
-        let drag = crate::windows::cached_drag_shape(app, geometry.radius, scale);
+        let drag = crate::windows::cached_drag_shape(
+            app,
+            geometry.radius,
+            scale,
+            geometry.width,
+            geometry.height,
+        );
         let control_region = if !menu && !panel && drag.arc {
             Region::polygon(&drag.points)?
         } else {

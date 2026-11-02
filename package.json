@@ -19,7 +19,9 @@
     "test:release": "node scripts/tests/release-smoke.mjs",
     "tauri": "tauri",
     "version:set": "node scripts/sync-version.mjs",
-    "test:localization": "node scripts/tests/localization.mjs"
+    "test:localization": "node scripts/tests/localization.mjs",
+    "test:drag-position": "node scripts/tests/drag-position.mjs",
+    "test:appearance": "node scripts/tests/appearance.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.4"

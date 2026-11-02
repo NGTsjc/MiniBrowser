@@ -57,6 +57,7 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
     let settings = state.settings.lock().unwrap().clone();
     let session = state.session.lock().unwrap().clone();
     *state.effective_corner_radius.lock().unwrap() = settings.corner_radius;
+    *state.effective_drag_position.lock().unwrap() = settings.drag_position;
     state.visible.store(true, Ordering::SeqCst);
     state.controls_ready.store(false, Ordering::SeqCst);
     state.panel_open.store(false, Ordering::SeqCst);
@@ -345,6 +346,8 @@ pub fn current_drag_shape(app: &AppHandle) -> layout::DragShape {
         app,
         current_radius(app, geometry.0, geometry.1, geometry.2),
         geometry.2,
+        geometry.0,
+        geometry.1,
     )
     .as_ref()
     .clone()
@@ -354,12 +357,17 @@ pub fn cached_drag_shape(
     app: &AppHandle,
     radius: i32,
     scale: f64,
+    width: i32,
+    height: i32,
 ) -> std::sync::Arc<layout::DragShape> {
-    app.state::<AppState>()
+    let state = app.state::<AppState>();
+    let position = *state.effective_drag_position.lock().unwrap();
+    let shape = state
         .drag_cache
         .lock()
         .unwrap()
-        .get(radius, scale)
+        .place(radius, scale, width, height, position);
+    shape
 }
 
 fn publish_drag_shape(app: &AppHandle, shape: &std::sync::Arc<layout::DragShape>) {
@@ -411,7 +419,7 @@ fn sync_controls_inner(app: &AppHandle, force_corners: bool) -> Result<(), Strin
     let scale = browser.scale_factor().map_err(|e| e.to_string())?;
     let open = app.state::<AppState>().panel_open.load(Ordering::SeqCst);
     let radius = current_radius(app, size.width as i32, size.height as i32, scale);
-    let shape = cached_drag_shape(app, radius, scale);
+    let shape = cached_drag_shape(app, radius, scale, size.width as i32, size.height as i32);
     let (x, y, width, height) = if open {
         (position.x, position.y, size.width, size.height)
     } else {
@@ -510,6 +518,10 @@ pub fn show(app: &AppHandle) -> Result<(), String> {
 }
 
 pub fn hide(app: &AppHandle) -> Result<(), String> {
+    crate::ui_thread::run(app, hide_inner)
+}
+
+fn hide_inner(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
     if state.busy.load(Ordering::SeqCst) {
         return Ok(());
@@ -523,9 +535,11 @@ pub fn hide(app: &AppHandle) -> Result<(), String> {
         if let Some(controls) = app.get_webview_window("controls") {
             let _ = controls.hide();
         }
+        browser.hide().map_err(|e| e.to_string())?;
+        // Hide the host before its renderer so a still-visible empty native
+        // surface cannot be exposed between two queued visibility operations.
         let webview: &tauri::Webview = browser.as_ref();
         let _ = webview.hide();
-        browser.hide().map_err(|e| e.to_string())?;
         state.visible.store(false, Ordering::SeqCst);
         update_visibility(app, false);
     }
@@ -601,7 +615,7 @@ pub fn apply_window_settings(app: &AppHandle, settings: &Settings) -> Result<(),
             .map_err(|e| e.to_string())?;
     }
     set_opacity(app, settings.opacity)?;
-    crate::corners::preview(app, settings.corner_radius)
+    crate::drag_position::apply(app, settings.corner_radius, settings.drag_position)
 }
 
 pub fn restore(app: &AppHandle) -> Result<(), String> {

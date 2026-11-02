@@ -1,20 +1,88 @@
 //! Geometry shared by the control renderer and native hit region, in physical pixels.
 use crate::parameters as p;
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::f64::consts::{FRAC_PI_4, PI};
 use std::sync::Arc;
 
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub enum DragPosition {
+    #[default]
+    TopLeft,
+    TopRight,
+    BottomLeft,
+    BottomRight,
+}
+impl DragPosition {
+    pub const ALL: [Self; 4] = [
+        Self::TopLeft,
+        Self::TopRight,
+        Self::BottomLeft,
+        Self::BottomRight,
+    ];
+    fn flips(self) -> (bool, bool) {
+        (
+            matches!(self, Self::TopRight | Self::BottomRight),
+            matches!(self, Self::BottomLeft | Self::BottomRight),
+        )
+    }
+}
+
 #[derive(Default)]
-pub struct Cache(Option<(i32, u64, Arc<DragShape>)>);
+pub struct Cache {
+    base: Option<(i32, u64, Arc<DragShape>)>,
+    placed: Option<(i32, i32, DragPosition, Arc<DragShape>)>,
+}
 impl Cache {
     pub fn get(&mut self, radius: i32, scale: f64) -> Arc<DragShape> {
-        if let Some((r, s, shape)) = &self.0 {
+        if let Some((r, s, shape)) = &self.base {
             if *r == radius && *s == scale.to_bits() {
                 return shape.clone();
             }
         }
         let shape = Arc::new(drag_shape(radius, scale));
-        self.0 = Some((radius, scale.to_bits(), shape.clone()));
+        self.base = Some((radius, scale.to_bits(), shape.clone()));
+        self.placed = None;
+        shape
+    }
+    pub fn place(
+        &mut self,
+        radius: i32,
+        scale: f64,
+        width: i32,
+        height: i32,
+        position: DragPosition,
+    ) -> Arc<DragShape> {
+        let base = self.get(radius, scale);
+        if position == DragPosition::TopLeft {
+            return base;
+        }
+        let (flip_x, flip_y) = position.flips();
+        let key_width = if flip_x { width } else { 0 };
+        let key_height = if flip_y { height } else { 0 };
+        if let Some((w, h, p, shape)) = &self.placed {
+            if (*w, *h, *p) == (key_width, key_height, position) {
+                return shape.clone();
+            }
+        }
+        let mut shape = base.as_ref().clone();
+        shape.position = position;
+        if flip_x {
+            shape.x = width - base.x - base.width as i32;
+            shape.grip[0] = shape.width as i32 - 1 - shape.grip[0];
+            for point in &mut shape.points {
+                point[0] = shape.width as i32 - 1 - point[0];
+            }
+        }
+        if flip_y {
+            shape.y = height - base.y - base.height as i32;
+            shape.grip[1] = shape.height as i32 - 1 - shape.grip[1];
+            for point in &mut shape.points {
+                point[1] = shape.height as i32 - 1 - point[1];
+            }
+        }
+        let shape = Arc::new(shape);
+        self.placed = Some((key_width, key_height, position, shape.clone()));
         shape
     }
 }
@@ -22,6 +90,8 @@ impl Cache {
 #[derive(Clone, Debug, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct DragShape {
+    pub position: DragPosition,
+    pub edge_offset: [i32; 2],
     pub x: i32,
     pub y: i32,
     pub width: u32,
@@ -55,6 +125,8 @@ pub fn drag_shape(radius: i32, scale: f64) -> DragShape {
         let tangent = r * (1. - 1. / 2_f64.sqrt());
         let grip = ((side as f64 + tangent) / 2.).round() as i32;
         return DragShape {
+            position: DragPosition::TopLeft,
+            edge_offset: [0, 0],
             x: 0,
             y: 0,
             width: (p::DRAG_SIZE * scale).round() as u32,
@@ -106,6 +178,8 @@ pub fn drag_shape(radius: i32, scale: f64) -> DragShape {
     }
     let center = r - rho / 2_f64.sqrt();
     DragShape {
+        position: DragPosition::TopLeft,
+        edge_offset: [x, y],
         x,
         y,
         width,
@@ -120,6 +194,67 @@ pub fn drag_shape(radius: i32, scale: f64) -> DragShape {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn all_corners_mirror_visible_geometry_and_follow_resize_without_changing_shape() {
+        for scale in [1., 1.25, 1.5, 2., 3.] {
+            for (width, height) in [(p::MIN_WIDTH, p::MIN_HEIGHT), (280., 200.), (960., 600.)] {
+                let (w, h) = ((width * scale) as i32, (height * scale) as i32);
+                for requested in [0, 32, 63, 64, 128, p::MAX_CORNER_RADIUS] {
+                    let radius = effective_radius(requested, w, h, scale);
+                    let base = drag_shape(radius, scale);
+                    for position in DragPosition::ALL {
+                        let mut cache = Cache::default();
+                        let shape = cache.place(radius, scale, w, h, position);
+                        let (right, bottom) = position.flips();
+                        assert_eq!(
+                            shape.x,
+                            if right {
+                                w - base.x - base.width as i32
+                            } else {
+                                base.x
+                            }
+                        );
+                        assert_eq!(
+                            shape.y,
+                            if bottom {
+                                h - base.y - base.height as i32
+                            } else {
+                                base.y
+                            }
+                        );
+                        assert_eq!(
+                            (shape.width, shape.height, shape.arc),
+                            (base.width, base.height, base.arc)
+                        );
+                        assert!(inside(
+                            (shape.x + shape.grip[0]) as f64,
+                            (shape.y + shape.grip[1]) as f64,
+                            w as f64,
+                            h as f64,
+                            radius as f64
+                        ));
+                        for point in &shape.points {
+                            assert!(inside(
+                                (shape.x + point[0]) as f64,
+                                (shape.y + point[1]) as f64,
+                                w as f64,
+                                h as f64,
+                                radius as f64
+                            ));
+                        }
+                        assert!(Arc::ptr_eq(
+                            &shape,
+                            &cache.place(radius, scale, w, h, position)
+                        ));
+                        let resized = cache.place(radius, scale, w + 100, h + 60, position);
+                        assert_eq!(resized.x - shape.x, if right { 100 } else { 0 });
+                        assert_eq!(resized.y - shape.y, if bottom { 60 } else { 0 });
+                        assert_eq!(resized.points, shape.points);
+                    }
+                }
+            }
+        }
+    }
     #[test]
     fn geometry_is_reused_until_effective_radius_or_dpi_changes() {
         let mut cache = Cache::default();

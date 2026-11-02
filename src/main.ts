@@ -2,8 +2,10 @@ import { t, h } from './i18n';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { bindToolbar, renderDragShape } from './gear';
+import { bindPositionSelect } from './position-select';
+import './position-select.css';
 import { createContextMenu } from './context-menu';
-import type { Settings, Snapshot, DragShape, ApplyOutcome } from './types';
+import type { Settings, Snapshot, DragShape, ApplyOutcome, DragPosition } from './types';
 import { bindThemeEditor, initializeTheme } from './theme';
 import './style.css';
 import { LatestPreview } from './preview';
@@ -42,6 +44,8 @@ if (view !== 'controls') {
           <input id="corner-radius" type="range" min="${parameters.limits.minCornerRadius}" max="${parameters.limits.maxCornerRadius}" step="${parameters.limits.cornerRadiusStep}" value="${parameters.defaults.cornerRadius}" />
           <div class="range-labels"><span>${h('settings.square')}</span><span>${h('settings.round')}</span></div>
           <p class="hint">${h('settings.previewHint')}</p>
+          <label class="field-label position-label" for="drag-position">${h('settings.dragPosition')}</label>
+          <select id="drag-position">${parameters.limits.dragPositions.map(position => `<option value="${position}">${h(`positions.${position}`)}</option>`).join('')}</select>
           <div class="theme-field"><label class="field-label" for="accent-hex">${h('settings.accent')}</label>
             <div class="theme-editor"><input id="accent-picker" type="color" aria-label="${h('settings.pickColor')}" value="${parameters.defaults.accentColor}" /><input id="accent-hex" type="text" aria-label="${h('settings.colorHex')}" pattern="#[0-9A-Fa-f]{6}" required maxlength="7" spellcheck="false" autocomplete="off" value="${parameters.defaults.accentColor}" /><button id="accent-reset" type="button" class="text-button">${h('settings.reset')}</button></div>
             <div class="theme-swatches" role="group" aria-label="${h('settings.presets')}">${[parameters.defaults.accentColor, '#7C3AED', '#DB2777', '#DC2626', '#B45309', '#047857', '#000000', '#FFFFFF'].map(color => `<button type="button" class="theme-swatch" data-color="${color}" aria-label="${h('settings.accent')} ${color}" aria-pressed="false"></button>`).join('')}</div>
@@ -67,6 +71,8 @@ if (view !== 'controls') {
   const pause = element<HTMLInputElement>('pause-media');
   const opacity = element<HTMLInputElement>('opacity');
   const cornerRadius = element<HTMLInputElement>('corner-radius');
+  const dragPosition = element<HTMLSelectElement>('drag-position');
+  const positionSelect = bindPositionSelect(dragPosition, panel);
   const shortcut = element<HTMLInputElement>('shortcut');
   const notice = element<HTMLElement>('notice');
   const confirmation = element<HTMLElement>('clear-confirm');
@@ -75,12 +81,18 @@ if (view !== 'controls') {
   let editedUrl = false;
   let busy = false;
   let previewEpoch = 0;
+  let focusVersion = 0;
+  panel.addEventListener('pointerdown', () => { focusVersion++; }, true);
+  panel.addEventListener('keydown', () => { focusVersion++; }, true);
   const opacityPreview = new LatestPreview<{value:number;epoch:number}>(
     ({value,epoch}) => invoke('preview_opacity',{opacity:value,epoch}), report);
   const cornerPreview = new LatestPreview<{value:number;epoch:number}>(
     ({value,epoch}) => invoke('preview_corner_radius',{radius:value,epoch}), report);
-  const flushPreviews = () => Promise.all([opacityPreview.flush(), cornerPreview.flush()]);
-  const stopPreviews = () => Promise.all([opacityPreview.cancel(), cornerPreview.cancel()]);
+  const positionPreview = new LatestPreview<{value:DragPosition;epoch:number}>(
+    ({value,epoch}) => invoke('preview_drag_position',{position:value,epoch}), report);
+  const resumePreviews = () => { opacityPreview.resume(); cornerPreview.resume(); positionPreview.resume(); };
+  const flushPreviews = () => Promise.all([opacityPreview.flush(), cornerPreview.flush(), positionPreview.flush()]);
+  const stopPreviews = () => Promise.all([opacityPreview.cancel(), cornerPreview.cancel(), positionPreview.cancel()]);
   async function refreshEpoch() {
     try { previewEpoch = (await invoke<Snapshot>('get_settings')).previewEpoch; } catch { /* host may be closing */ }
   }
@@ -92,7 +104,7 @@ if (view !== 'controls') {
   }
   function setBusy(value: boolean, message = '') {
     busy = value;
-    panel.querySelectorAll<HTMLButtonElement | HTMLInputElement>('button, input').forEach(control => { control.disabled = value; });
+    panel.querySelectorAll<HTMLButtonElement | HTMLInputElement | HTMLSelectElement>('button, input, select').forEach(control => { control.disabled = value; });
     element<HTMLElement>('saving').textContent = message;
   }
   const contextMenu = createContextMenu(app, report);
@@ -105,7 +117,7 @@ if (view !== 'controls') {
       return;
     }
     previewEpoch = snapshot.previewEpoch;
-    opacityPreview.resume(); cornerPreview.resume();
+    resumePreviews();
     settings = structuredClone(snapshot.settings);
     themeEditor.open(settings);
     editedUrl = false;
@@ -113,6 +125,8 @@ if (view !== 'controls') {
     topmost.checked = settings.alwaysOnTop;
     pause.checked = settings.pauseMediaOnHide;
     cornerRadius.value = String(settings.cornerRadius);
+    dragPosition.value = settings.dragPosition;
+    positionSelect.sync();
     element<HTMLOutputElement>('corner-radius-value').value = `${cornerRadius.value} px`;
     opacity.value = String(Math.round(settings.opacity * 100));
     element<HTMLOutputElement>('opacity-value').value = `${opacity.value}%`;
@@ -123,9 +137,11 @@ if (view !== 'controls') {
     panel.hidden = false;
     document.body.classList.add('panel-open');
     setBusy(false);
-    setTimeout(() => url.focus(), 60);
+    const scheduledFocus = ++focusVersion;
+    setTimeout(() => { if (!panel.hidden && focusVersion === scheduledFocus) url.focus(); }, 60);
   }
   function close() {
+    positionSelect.close();
     void stopPreviews();
     themeEditor.close();
     panel.hidden = true;
@@ -138,7 +154,7 @@ if (view !== 'controls') {
     setBusy(true);
     await stopPreviews();
     try { await invoke('cancel_settings', {epoch:previewEpoch}); }
-    catch (error) { await refreshEpoch(); opacityPreview.resume(); cornerPreview.resume(); setBusy(false); report(error); }
+    catch (error) { await refreshEpoch(); resumePreviews(); setBusy(false); report(error); }
   }
   bindToolbar(toolbar, report);
   url.addEventListener('input', () => { editedUrl = true; });
@@ -151,6 +167,10 @@ if (view !== 'controls') {
     element<HTMLOutputElement>('corner-radius-value').value = Number(cornerRadius.value) + ' px';
     if (busy || panel.hidden) return;
     cornerPreview.enqueue({value:Number(cornerRadius.value), epoch:previewEpoch});
+  });
+  dragPosition.addEventListener('change', () => {
+    if (busy || panel.hidden) return;
+    positionPreview.enqueue({value:dragPosition.value as DragPosition,epoch:previewEpoch});
   });
   shortcut.addEventListener('keydown', (event) => {
     if (event.key === 'Tab' || event.key === 'Escape') return;
@@ -176,7 +196,7 @@ if (view !== 'controls') {
     if (busy) return;
     setBusy(true, t('settings.clearing'));
     await stopPreviews();
-    try { await invoke('clear_session'); } catch (error) { await refreshEpoch(); opacityPreview.resume(); cornerPreview.resume(); setBusy(false); report(error); }
+    try { await invoke('clear_session'); } catch (error) { await refreshEpoch(); resumePreviews(); setBusy(false); report(error); }
   });
   element('cancel').addEventListener('click', () => void cancel());
   document.addEventListener('keydown', (event) => {
@@ -189,7 +209,7 @@ if (view !== 'controls') {
     await flushPreviews();
     const draft: Settings = { ...settings, startupUrl: url.value, alwaysOnTop: topmost.checked,
       opacity: Number(opacity.value) / 100, shortcut: shortcut.value || null, pauseMediaOnHide: pause.checked,
-      accentColor: themeEditor.value(), cornerRadius: Number(cornerRadius.value) };
+      accentColor: themeEditor.value(), cornerRadius: Number(cornerRadius.value), dragPosition: dragPosition.value as DragPosition };
     try {
       const result = await invoke<ApplyOutcome>('apply_settings', {settings:draft, urlEdited:editedUrl, epoch:previewEpoch});
       if (result.warnings.length) {

@@ -1,3 +1,5 @@
+export type DragPosition = 'topLeft' | 'topRight' | 'bottomLeft' | 'bottomRight';
+
 export interface Settings {
   version: number;
   startupUrl: string;
@@ -9,6 +11,7 @@ export interface Settings {
   pauseMediaOnHide: boolean;
   accentColor: string;
   cornerRadius: number;
+  dragPosition: DragPosition;
   languageFile: string | null;
 }
 
@@ -34,6 +37,7 @@ export interface Parameters {
     minWidth: number; minHeight: number; maxSize: number;
     minOpacity: number; maxOpacity: number;
     minCornerRadius: number; maxCornerRadius: number; cornerRadiusStep: number;
+    dragPositions: DragPosition[];
   };
   layout: {
     dragWidth: number; dragHeight: number; arcThreshold: number; arcThickness: number;
@@ -44,6 +48,7 @@ export interface Parameters {
 }
 
 export interface DragShape {
+  position: DragPosition; edgeOffset: [number, number];
   x: number; y: number; width: number; height: number;
   arc: boolean; points: [number, number][]; grip: [number, number];
   panelInset: number;

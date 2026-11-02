@@ -2,7 +2,7 @@
 
 所有命令均在仓库根目录执行，优先使用 `pnpm`；PowerShell 拦截 `pnpm.ps1` 时使用 `pnpm.cmd`。
 
-当前共 18 个脚本：构建／版本工具 2 个、测试入口 5 个、单元测试 3 个、集成测试子模块 4 个、底层工具 3 个、早期图标工具 1 个。通常只运行 `package.json` 中的命令，子模块由入口自动调用。
+当前共 20 个脚本：构建／版本工具 2 个、测试入口 7 个、单元测试 3 个、集成测试子模块 4 个、底层工具 3 个、早期图标工具 1 个。通常只运行 `package.json` 中的命令，子模块由入口自动调用。
 
 ```text
 scripts/
@@ -29,6 +29,8 @@ scripts/
 | `smoke.mjs` | `pnpm test:smoke` | 完整桌面集成回归：设置、主题、拖动、缩放、圆角、透明度、菜单、托盘、快捷键、媒体、网站缩放、新页面拦截、单实例及会话清理；先 `pnpm build:debug` |
 | `maintenance.mjs` | `pnpm test:maintenance` | 故障与竞争专项：保存前／后失败、草稿保护、预览失效、原生操作回滚、尺寸保存交错、重建期间关闭／重启、不可恢复错误退出；先 `pnpm build:debug` |
 | `localization.mjs` | `pnpm test:localization` | 英文回退、中文覆盖、重启／会话重建、文案转义、极小窗口和目录联接越界检查；先 `pnpm build:debug` |
+| `drag-position.mjs` | `pnpm test:drag-position` | 四角方块／圆弧的实际区域、拖动和菜单，预览取消／确认／保存失败，极小窗口按钮、重启及会话重建持久化；先 `pnpm build:debug` |
+| `appearance.mjs` | `pnpm test:appearance` | 自绘下拉列表、键盘及主题预览、小窗口避让；强制原生样式重写、连续显隐／置顶期间的样式采样、边缘缩放及 Alt+F4；先 `pnpm build:debug` |
 | `release-smoke.mjs` | `pnpm test:release` | 对实际打包 EXE 检查首显、70% 不透明度、任务栏样式、快捷键显隐、EXE 相对路径存储与正常关闭；先 `pnpm build` |
 | `performance.mjs` | `pnpm test:performance` | 固定本地页面默认采样三轮，记录启动、移动／缩放／预览耗时、线程、工作集及 GDI 资源；先 `pnpm build:debug` |
 
@@ -116,6 +118,8 @@ pnpm test:maintenance
 | `.cache/smoke-portable/<时间戳>/` | 完整回归报告、截图与隔离数据 |
 | `.cache/maintenance-checks/<时间戳>/` | 专项报告、失败现场与隔离数据 |
 | `.cache/localization-checks/<时间戳>/` | 语言专项报告、截图与隔离数据 |
+| `.cache/drag-position-checks/<时间戳>/` | 四角拖动区专项报告、截图与隔离数据 |
+| `.cache/appearance-checks/<标签>-<时间戳>/` | 下拉列表截图、原生样式采样、失败现场及隔离数据；可用 `pnpm test:appearance <旧调试EXE> --baseline` 记录修复前样本 |
 | `.cache/maintenance-performance/<标签>-<时间戳>/` | 每轮性能样本、汇总与被测 EXE 哈希 |
 | `.cache/release-smoke/<时间戳>/` | 发布版检查使用的隔离 EXE 与数据目录；通过结果输出到终端 |
 | `.cache/version-tests/`、`.cache/unit/` | 版本测试临时夹具与编译后的预览模块 |
@@ -126,4 +130,4 @@ pnpm test:maintenance
 
 `check.yml` 和 `release.yml` 均执行版本检查、Node.js 单元测试、前端构建／类型检查、Rust 格式／Clippy／单元测试以及发布构建。后者另执行版本同步、ZIP／SHA256 打包与 Release 发布。
 
-目前 CI 不执行真实桌面的 smoke、maintenance、localization、performance 和 release-smoke；它们在本地 Windows 桌面串行运行。CI 构建通过不能代替本地原生验收。实机验证范围与未覆盖环境见 [原生验收说明](../docs/verification.md)，本地各轮实际结果以 `.cache/` 中的报告为准。
+目前 CI 不执行真实桌面的 smoke、maintenance、localization、drag-position、appearance、performance 和 release-smoke；它们在本地 Windows 桌面串行运行。CI 构建通过不能代替本地原生验收。实机验证范围与未覆盖环境见 [原生验收说明](../docs/verification.md)，本地各轮实际结果以 `.cache/` 中的报告为准。

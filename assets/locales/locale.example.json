@@ -1,8 +1,8 @@
 {
   "meta.languageTag": "zh-CN",
   "guide.title": "给网页，一个小空间。",
-  "guide.intro": "右键此引导页或左上角拖动区，选择设置并输入网址。",
-  "guide.menu": "右键左上角拖动区打开菜单",
+  "guide.intro": "右键此引导页或拖动区，选择设置并输入网址。",
+  "guide.menu": "右键拖动区打开菜单",
   "guide.context": "网页内右键保留网站原有操作",
   "guide.resize": "拖动窗口边缘调整尺寸",
   "guide.recover": "使用托盘或快捷键找回隐藏窗口",
@@ -138,5 +138,11 @@
   "window.controlsTitle": "MiniBrowser 设置",
   "errors.localePath": "语言文件必须使用 MiniBrowser.data 目录内的相对路径",
   "errors.localeObject": "语言文件必须包含一个 JSON 对象",
-  "errors.localeOutside": "语言文件的实际路径超出了 MiniBrowser.data 目录"
+  "errors.localeOutside": "语言文件的实际路径超出了 MiniBrowser.data 目录",
+  "settings.dragPosition": "拖动区位置",
+  "positions.topLeft": "左上角",
+  "positions.topRight": "右上角",
+  "positions.bottomLeft": "左下角",
+  "positions.bottomRight": "右下角",
+  "errors.dragRollback": "{error}；恢复窗口控制区域失败：{rollback}"
 }

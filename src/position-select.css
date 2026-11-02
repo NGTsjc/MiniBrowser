@@ -1,0 +1,17 @@
+.position-select-trigger { display: flex; align-items: center; justify-content: space-between; gap: 12px; width: 100%; min-width: 0; padding: 10px 12px; text-align: left; background: var(--surface); border: 1px solid var(--border); border-radius: 8px; }
+.position-select-trigger:hover:not(:disabled) { background: var(--subtle); border-color: var(--muted); }
+.position-select-trigger[aria-expanded=true] { border-color: var(--accent-ink); box-shadow: 0 0 0 2px var(--accent-soft); }
+.position-select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.position-select-arrow { width: 7px; height: 7px; border-right: 1.5px solid var(--muted); border-bottom: 1.5px solid var(--muted); transform: rotate(45deg) translateY(-2px); flex-shrink: 0; margin-right: 2px; }
+.position-select-trigger[aria-expanded=true] .position-select-arrow { transform: rotate(225deg) translate(-2px, -1px); border-color: var(--accent-ink); }
+.position-select-popup { position: fixed; z-index: 8; padding: 4px; overflow-y: auto; overflow-x: hidden; scrollbar-width: thin; background: var(--surface); border: 1px solid var(--border); border-radius: 9px; box-shadow: 0 5px 18px #20293820, 0 1px 4px #2029380D; }
+.position-select-option { display: flex; align-items: center; justify-content: space-between; gap: 10px; min-height: 32px; padding: 7px 10px; border: 1px solid transparent; border-radius: 5px; cursor: pointer; overflow-wrap: anywhere; }
+.position-select-option > span:first-child { min-width: 0; }
+.position-select-option.active { background: var(--accent-hover); }
+.position-select-option[aria-selected=true] { color: var(--accent-ink); background: var(--accent-soft); border-color: var(--accent-soft); }
+.position-select-check { flex-shrink: 0; visibility: hidden; font-size: 12px; }
+.position-select-option[aria-selected=true] .position-select-check { visibility: visible; }
+@media (max-height: 120px) {
+  .position-select-popup { padding: 1px; border-radius: 5px; }
+  .position-select-option { min-height: 20px; padding: 1px 4px; font-size: 11px; line-height: 16px; }
+}
