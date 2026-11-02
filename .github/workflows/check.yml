@@ -46,5 +46,6 @@ jobs:
           path: |
             release/MiniBrowser.exe
             release/MiniBrowser.exe.sha256
+            release/locale.example.json
           if-no-files-found: error
           retention-days: 14

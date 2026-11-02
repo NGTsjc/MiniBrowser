@@ -8,6 +8,7 @@ mod context_menu;
 mod control_layout;
 mod corners;
 mod lifecycle;
+mod localization;
 mod navigation;
 mod operation;
 mod parameters;
@@ -78,7 +79,10 @@ fn main() {
         ])
         .setup(|app| {
             if let Err(error) = initialize(app) {
-                platform::fatal(&format!("启动失败：{error}\n\nWebView2 安装说明：https://developer.microsoft.com/microsoft-edge/webview2/"));
+                platform::fatal(&localization::format(
+                    "errors.startup",
+                    &[("error", error.to_string())],
+                ));
                 app.cleanup_before_exit();
                 std::process::exit(1);
             }
@@ -100,7 +104,10 @@ fn main() {
             }
         }),
         Err(error) => {
-            platform::fatal(&format!("启动失败：{error}\n\n请确认 EXE 所在目录可写，且系统已安装 Microsoft Edge WebView2 Runtime。\nhttps://developer.microsoft.com/microsoft-edge/webview2/"));
+            platform::fatal(&localization::format(
+                "errors.startupBuild",
+                &[("error", error.to_string())],
+            ));
             std::process::exit(1);
         }
     }
@@ -111,13 +118,18 @@ fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let store = config::PortableStore::beside_executable()?;
     store.clean_stale_sessions();
     let loaded = store.load();
+    let locale_warning = localization::init(&store.root, loaded.settings.language_file.as_deref());
+    let warning = loaded.warning.map(|key| localization::text(key).to_owned());
+    let warnings: Vec<String> = warning.into_iter().chain(locale_warning).collect();
+    let warning =
+        (!warnings.is_empty()).then(|| warnings.join(localization::text("common.separator")));
     let session = store.new_session()?;
     let url = loaded.settings.startup_url.clone();
     app.manage(AppState::new(
         store,
         loaded.settings,
         session,
-        loaded.warning,
+        warning,
         loaded.preserve_file,
     ));
     tray::setup(app.handle())?;

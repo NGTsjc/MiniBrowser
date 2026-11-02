@@ -28,7 +28,7 @@ pub fn startup_gate() -> Result<StartupGate, String> {
         let status = WaitForSingleObject(mutex, 30_000);
         if status != WAIT_OBJECT_0 && status != WAIT_ABANDONED {
             let _ = CloseHandle(mutex);
-            return Err("另一个实例正在启动，请稍后重试。".into());
+            return Err(crate::localization::text("errors.startupGate").into());
         }
         Ok(StartupGate(mutex))
     }
@@ -51,7 +51,7 @@ pub fn check_runtime() -> Result<(), String> {
         use windows::core::{w, PCWSTR, PWSTR};
         let mut pointer = PWSTR::null();
         GetAvailableCoreWebView2BrowserVersionString(PCWSTR::null(), &mut pointer)
-            .map_err(|_| "未找到 Microsoft Edge WebView2 Runtime，请先安装后重试。".to_string())?;
+            .map_err(|_| crate::localization::text("errors.runtimeMissing").to_string())?;
         let version = CoTaskMemPWSTR::from(pointer);
         let mut comparison = 0;
         CompareBrowserVersions(
@@ -61,7 +61,7 @@ pub fn check_runtime() -> Result<(), String> {
         )
         .map_err(|e| e.to_string())?;
         if comparison < 0 {
-            return Err("WebView2 Runtime 版本过旧，无法保证无痕模式，请更新后重试。".into());
+            return Err(crate::localization::text("errors.runtimeOld").into());
         }
     }
     Ok(())
@@ -133,7 +133,7 @@ pub fn set_opacity(window: &WebviewWindow, opacity: f64) -> Result<(), String> {
     #[cfg(not(windows))]
     {
         let _ = (window, opacity);
-        Err("此平台的窗口不透明度尚未实现".into())
+        Err(crate::localization::text("errors.opacityPlatform").into())
     }
 }
 
@@ -282,7 +282,7 @@ pub fn secure_webview(browser: &WebviewWindow, app: AppHandle) -> Result<(), Str
                     if crate::operation::is_current_session(&app, &session) {
                         crate::windows::notify(
                             &app,
-                            "首版暂不支持摄像头、麦克风、定位等网站权限。",
+                            crate::localization::text("errors.permissions"),
                         );
                     }
                     Ok(())

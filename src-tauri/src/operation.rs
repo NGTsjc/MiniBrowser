@@ -11,12 +11,12 @@ impl Guard {
             || state.exiting.load(Ordering::SeqCst)
             || state.pending_exit.load(Ordering::SeqCst) != 0
         {
-            return Err("应用正在关闭或重启".into());
+            return Err(crate::localization::text("errors.exiting").into());
         }
         state
             .busy
             .compare_exchange(false, true, Ordering::SeqCst, Ordering::SeqCst)
-            .map_err(|_| "正在处理，请稍候".to_string())?;
+            .map_err(|_| crate::localization::text("errors.busy").to_string())?;
         Ok(Self(app.clone()))
     }
 }
@@ -34,7 +34,7 @@ pub fn validate_preview(app: &AppHandle, epoch: Option<u64>) -> Result<(), Strin
     if epoch
         .is_some_and(|epoch| epoch != app.state::<AppState>().preview_epoch.load(Ordering::SeqCst))
     {
-        return Err("此设置预览已失效".into());
+        return Err(crate::localization::text("errors.previewExpired").into());
     }
     Ok(())
 }

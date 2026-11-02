@@ -23,7 +23,8 @@ pnpm dev
 | `pnpm check` | TypeScript 类型检查 |
 | `pnpm build:ui` | 类型检查并构建前端到 `dist/` |
 | `pnpm test:native` | Rust 单元测试 |
-| `pnpm test:unit` | 版本脚本与预览调度单元测试 |
+| `pnpm test:unit` | 版本脚本、预览调度与文案格式化单元测试 |
+| `pnpm test:localization` | 英文／中文覆盖、重启生效、纯文本转义与便携路径检查；先构建调试版 |
 | `pnpm test:maintenance` | 维护专项原生故障／竞争检查，先运行 `build:debug` |
 | `pnpm test:performance` | 三轮隔离性能采样，先运行 `build:debug`，结果保存在 `.cache/maintenance-performance/` |
 | `cargo fmt --manifest-path src-tauri/Cargo.toml` | 格式化 Rust |
@@ -53,6 +54,7 @@ pnpm dev
 | 拖动区与面板几何、原生圆角裁剪 | `src-tauri/src/control_layout.rs`、`corners.rs` |
 | 窗口生命周期与浮层同步 | `src-tauri/src/windows.rs`、`lifecycle.rs` |
 | 设置界面、样式、主题 | `src/main.ts`、`style.css`、`theme.ts` |
+| 英文和自定义文案 | `assets/locales/en.json`、完整中文示例 `locale.example.json`；使用说明见 [自定义文案](localization.md) |
 | 右键菜单／托盘 | 前后端的 `context-menu.*`／`context_menu.rs`，以及 `tray.rs` |
 | 应用／托盘图标 | `src-tauri/icons/icon.ico`；源图位于 `assets/branding/` |
 | 应用名称、版本、标识与构建配置 | `src-tauri/tauri.conf.json`；版本同步维护 `package.json`、`src-tauri/Cargo.toml` 及相关锁文件 |
@@ -87,7 +89,7 @@ git push origin main
 ```
 
 - 推送 `main`、提交 PR 或手动运行 **Check and Build**：Windows x64 上检查版本、前端、Rust 格式／Clippy／单元测试，并构建 EXE。Actions 页面可下载 EXE 与 SHA256，保留 14 天。
-- 推送 `v*` 标签：运行 **Build and Release**，检查通过后创建 GitHub Release，提供独立 EXE、EXE 校验文件、`MiniBrowser_<版本>_win64.zip` 及 ZIP 校验文件。ZIP 仅包含 EXE 和对应校验文件。
+- 推送 `v*` 标签：运行 **Build and Release**，检查通过后创建 GitHub Release，提供独立 EXE、EXE 校验文件、中文文案示例、`MiniBrowser_<版本>_win64.zip` 及 ZIP 校验文件。ZIP 包含 EXE、对应校验文件和未启用的 `locale.example.json`。
 - CI 使用 Node.js 24、`packageManager` 指定的 pnpm 和 Rust 1.96.0，并缓存依赖；安装和 Rust 构建均使用锁文件。依赖真实桌面输入的 `test:smoke`／`test:release` 保留本地运行，不作为云端已完成的原生验收。
 
 发布新版本时，用以下流程即可；示例版本替换为未发布的新版本：
@@ -111,6 +113,7 @@ pnpm check
 pnpm test:unit
 pnpm test:native
 pnpm build:debug
+pnpm test:localization
 pnpm test:smoke
 pnpm test:maintenance
 pnpm build

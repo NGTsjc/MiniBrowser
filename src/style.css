@@ -14,6 +14,8 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent-ink)
 .toolbar:active { cursor: grabbing; }
 .drag-grip { position: absolute; left: var(--grip-x, 50%); top: var(--grip-y, 50%); transform: translate(-50%, -50%); text-align: center; color: var(--muted); font-size: min(21px, var(--grip-room, 21px)); line-height: 1; pointer-events: none; }
 .panel { height: 100vh; width: 100%; background: var(--surface); overflow: hidden; display: flex; flex-direction: column; }
+.panel { overflow-wrap: anywhere; }
+.setting-row > span { min-width: 0; }
 header { display: flex; align-items: center; justify-content: space-between; padding: 21px 21px 15px; gap: 10px; flex-shrink: 0; }
 .eyebrow { font-size: 9px; letter-spacing: 2.2px; color: var(--muted); font-weight: 600; }
 h1 { font-size: 23px; font-weight: 600; letter-spacing: -.5px; margin: 6px 0 0; }
@@ -109,5 +111,5 @@ input[type=color] { width: 40px; height: 38px; padding: 3px; border: 1px solid v
   .panel { scrollbar-width: none; }
   .panel::-webkit-scrollbar { display: none; }
   .panel .form-footer { padding-left: calc(var(--drag-left, 0px) + var(--drag-width, 36px) + 8px); }
-  .panel .form-footer button { width: 100%; padding: 3px 0; }
+  .panel .form-footer button { width: 100%; padding: 3px 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 }

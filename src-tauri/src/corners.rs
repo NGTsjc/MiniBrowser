@@ -29,7 +29,7 @@ pub fn sync(app: &AppHandle, force: bool) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
         receive
             .recv_timeout(std::time::Duration::from_secs(5))
-            .map_err(|_| "应用窗口圆角超时".to_string())?
+            .map_err(|_| crate::localization::text("errors.cornerTimeout").to_string())?
     }
     #[cfg(not(windows))]
     {
@@ -43,16 +43,16 @@ pub fn sync(app: &AppHandle, force: bool) -> Result<(), String> {
         {
             Ok(())
         } else {
-            Err("此平台尚未实现可调窗口圆角".into())
+            Err(crate::localization::text("errors.cornerPlatform").into())
         }
     }
 }
 
 pub fn preview(app: &AppHandle, radius: u32) -> Result<(), String> {
     if radius > crate::parameters::MAX_CORNER_RADIUS {
-        return Err(format!(
-            "窗口圆角必须在 0～{} 之间",
-            crate::parameters::MAX_CORNER_RADIUS
+        return Err(crate::localization::format(
+            "errors.radius",
+            &[("max", (crate::parameters::MAX_CORNER_RADIUS).to_string())],
         ));
     }
     let state = app.state::<crate::state::AppState>();
@@ -60,7 +60,13 @@ pub fn preview(app: &AppHandle, radius: u32) -> Result<(), String> {
     if let Err(error) = crate::windows::sync_controls(app) {
         *state.effective_corner_radius.lock().unwrap() = previous;
         if let Err(rollback) = crate::windows::sync_controls(app) {
-            return Err(format!("{error}；恢复圆角失败：{rollback}"));
+            return Err(crate::localization::format(
+                "errors.cornerRollback",
+                &[
+                    ("error", (error).to_string()),
+                    ("rollback", (rollback).to_string()),
+                ],
+            ));
         }
         return Err(error);
     }
@@ -155,7 +161,10 @@ pub fn install_controls(app: &AppHandle, controls: &tauri::WebviewWindow) -> Res
                     unsafe {
                         drop(Box::from_raw(data));
                     }
-                    crate::windows::notify(&handle, "无法安装圆角缩放控制。");
+                    crate::windows::notify(
+                        &handle,
+                        crate::localization::text("errors.resizeControl"),
+                    );
                 }
             }
         })
@@ -392,14 +401,14 @@ mod native {
                 }
             };
             if handle.0.is_null() {
-                Err("无法创建窗口圆角区域".into())
+                Err(crate::localization::text("errors.regionCreate").into())
             } else {
                 Ok(Self(handle))
             }
         }
         fn apply(self, hwnd: HWND) -> Result<(), String> {
             if unsafe { SetWindowRgn(hwnd, Some(self.0), true) } == 0 {
-                return Err("无法应用窗口圆角区域".into());
+                return Err(crate::localization::text("errors.regionApply").into());
             }
             std::mem::forget(self);
             Ok(())
@@ -417,7 +426,7 @@ mod native {
             let points: Vec<POINT> = points.iter().map(|p| POINT { x: p[0], y: p[1] }).collect();
             let region = unsafe { CreatePolygonRgn(&points, WINDING) };
             if region.0.is_null() {
-                Err("无法创建圆弧拖动区域".into())
+                Err(crate::localization::text("errors.arcCreate").into())
             } else {
                 Ok(Self(region))
             }
@@ -488,7 +497,7 @@ mod native {
                 w!("TAURI_DRAG_RESIZE_WINDOW"),
             )
         }
-        .map_err(|_| "无法找到原生窗口缩放边缘".to_string())?;
+        .map_err(|_| crate::localization::text("errors.resizeFind").to_string())?;
         if !enabled {
             return Region::new(0, 0, 0)?.apply(child);
         }
@@ -508,14 +517,14 @@ mod native {
                 || OffsetRgn(inner.0, grip - dx, grip - dy).0 == ERROR
                 || CombineRgn(Some(outer.0), Some(outer.0), Some(inner.0), RGN_DIFF).0 == ERROR
             {
-                return Err("无法创建圆角缩放边缘".into());
+                return Err(crate::localization::text("errors.resizeCreate").into());
             }
             let mut existing = 0_usize;
             if !GetWindowSubclass(child, Some(procedure), 0x4d44, Some(&mut existing)).as_bool() {
                 let data = Box::into_raw(Box::new((app.clone(), target.0 as isize)));
                 if !SetWindowSubclass(child, Some(procedure), 0x4d44, data as usize).as_bool() {
                     drop(Box::from_raw(data));
-                    return Err("无法安装圆角缩放边缘".into());
+                    return Err(crate::localization::text("errors.resizeInstall").into());
                 }
             }
         }
@@ -598,7 +607,7 @@ mod native {
                     )
                     .0 == ERROR
                 {
-                    return Err("无法裁剪窗口控制区域".into());
+                    return Err(crate::localization::text("errors.controlsClip").into());
                 }
             }
         }
@@ -619,7 +628,7 @@ mod native {
                     Some(region) => region.apply(hwnd),
                     None => {
                         if unsafe { SetWindowRgn(hwnd, None, true) } == 0 {
-                            Err("恢复矩形区域失败".into())
+                            Err(crate::localization::text("errors.rectangleRestore").into())
                         } else {
                             Ok(())
                         }
@@ -629,7 +638,7 @@ mod native {
                     errors.push(e);
                 }
             }
-            return Err(errors.join("；"));
+            return Err(errors.join(crate::localization::text("common.separator")));
         }
         LAST.with(|last| *last.borrow_mut() = Some(geometry));
         Ok(())

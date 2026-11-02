@@ -68,7 +68,7 @@ async function openMenu(client, webpage = false) {
   }
   await until(() => controls.evaluate(`!document.getElementById('context-menu').hidden`));
   const labels = await controls.evaluate(`[...document.querySelectorAll('#context-menu .menu-label')].map(e=>e.textContent)`);
-  assert.deepEqual(labels, ['设置','刷新','隐藏','关闭','恢复窗口','重启','开发者工具']);
+  assert.deepEqual(labels, ['Settings','Refresh','Hide','Close','Restore Window','Restart','Developer Tools']);
   const shown = await native(); const popup = toolbarWindow(shown); const area = shown.controlWorkArea;
   assert.ok(popup.x >= area.x && popup.y >= area.y && popup.x + popup.width <= area.x + area.width && popup.y + popup.height <= area.y + area.height);
 }
@@ -93,6 +93,8 @@ try {
   assert.equal(snapshot.settings.width, 960);
   assert.equal(snapshot.settings.height, 600);
   assert.equal(snapshot.settings.accentColor, '#2563EB');
+  assert.equal(snapshot.settings.languageFile, null);
+  assert.equal(await controls.evaluate(`document.documentElement.lang`),'en');
   assert.equal(await controls.evaluate(`getComputedStyle(document.documentElement).colorScheme`), 'light');
   assert.equal(await controls.evaluate(`getComputedStyle(document.getElementById('panel')).backgroundColor`), 'rgb(255, 255, 255)');
   assert.deepEqual(await controls.evaluate(`[...document.querySelectorAll('[data-color]')].map(e=>getComputedStyle(e).backgroundColor)`), ['rgb(37, 99, 235)', 'rgb(124, 58, 237)', 'rgb(219, 39, 119)', 'rgb(220, 38, 38)', 'rgb(180, 83, 9)', 'rgb(4, 120, 87)', 'rgb(0, 0, 0)', 'rgb(255, 255, 255)']);
@@ -335,7 +337,7 @@ try {
   await native('resize');
   await native('moveBeyond');
   const hiddenTray = await native('openTrayMenu');
-  assert.deepEqual(hiddenTray.menuItems, ['显示窗口','重置窗口','关闭','重启']);
+  assert.deepEqual(hiddenTray.menuItems, ['Show Window','Reset Window','Close','Restart']);
   await native('trayReset');
   const resetWindow = await until(async () => { const result=await native();return result.MiniBrowser.visible && result; });
   const restoredSettings = (await controls.invoke('get_settings')).settings;
@@ -362,7 +364,7 @@ try {
 
   await openMenu(controls);
   const visibleTray = await native('openTrayMenu');
-  assert.deepEqual(visibleTray.menuItems, ['隐藏窗口','重置窗口','关闭','重启']);
+  assert.deepEqual(visibleTray.menuItems, ['Hide Window','Reset Window','Close','Restart']);
   await native('trayReset');
   assert.equal(await controls.evaluate(`document.getElementById('context-menu').hidden`), true);
   assert.equal((await native()).MiniBrowser.visible, true);
@@ -372,7 +374,8 @@ try {
   const denied = await browser.evaluate(`window.__TAURI_INTERNALS__.invoke('get_settings').then(()=>false,()=>true)`);
   assert.equal(denied, true);
   assert.equal(await browser.evaluate(`window.__TAURI_INTERNALS__.invoke('preview_corner_radius',{radius:32}).then(()=>false,()=>true)`), true);
-  passed('remote webpage denied application IPC');
+  assert.equal(await browser.evaluate(`typeof window.__MINIBROWSER_LOCALE__`),'undefined');
+  passed('remote webpage denied application IPC and receives no locale dictionary');
 
   await browser.evaluate(`(async()=>{
     const canvas=document.createElement('canvas'); canvas.width=160; canvas.height=90;

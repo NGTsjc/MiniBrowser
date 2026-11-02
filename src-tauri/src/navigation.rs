@@ -24,7 +24,7 @@ pub fn new_page(app: &AppHandle, source_session: &Path, target: &url::Url) {
         return;
     }
     if !matches!(target.scheme(), "http" | "https") || target.host_str().is_none() {
-        windows::notify(app, "已阻止不支持的新页面。仅支持 HTTP / HTTPS 地址；空白弹窗、外部协议和独立窗口流程暂不支持。");
+        windows::notify(app, crate::localization::text("errors.newPageUnsupported"));
         return;
     }
     let handle = app.clone();
@@ -38,15 +38,24 @@ pub fn new_page(app: &AppHandle, source_session: &Path, target: &url::Url) {
         }
         let result = handle
             .get_webview_window("browser")
-            .ok_or_else(|| "浏览窗口已关闭".to_string())
+            .ok_or_else(|| crate::localization::text("errors.browserClosed").to_string())
             .and_then(|browser| browser.navigate(target).map_err(|e| e.to_string()));
         if let Err(error) = result {
-            windows::notify(&handle, &format!("无法在当前窗口打开新页面：{error}"));
+            windows::notify(
+                &handle,
+                &crate::localization::format("errors.newPage", &[("error", (error).to_string())]),
+            );
         }
     });
     if let Err(error) = result {
         if is_current(app, source_session) {
-            windows::notify(app, &format!("无法安排新页面导航：{error}"));
+            windows::notify(
+                app,
+                &crate::localization::format(
+                    "errors.newPageQueue",
+                    &[("error", (error).to_string())],
+                ),
+            );
         }
     }
 }

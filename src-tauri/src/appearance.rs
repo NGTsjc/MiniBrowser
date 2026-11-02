@@ -36,7 +36,7 @@ pub fn install(window: &WebviewWindow, app: &AppHandle) -> Result<(), String> {
             }
             let hwnd = window.hwnd().map_err(|e| e.to_string())?;
             if !unsafe { SetWindowSubclass(hwnd, Some(procedure), 0x4d41, 0) }.as_bool() {
-                return Err("无法安装窗口外观保护".into());
+                return Err(crate::localization::text("errors.appearance").into());
             }
             Ok(())
         })?;

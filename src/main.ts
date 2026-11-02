@@ -1,3 +1,4 @@
+import { t, h } from './i18n';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { bindToolbar, renderDragShape } from './gear';
@@ -17,44 +18,44 @@ const view = new URLSearchParams(location.search).get('view');
 
 if (view !== 'controls') {
   document.body.classList.add('guide');
-  app.innerHTML = `<main class="welcome"><div class="brand-mark">m<span>↗</span></div><div class="eyebrow">MINIBROWSER</div><h1>给网页，一个小空间。</h1><p>右键此引导页或左上角拖动区，选择设置并输入网址。</p><div class="guide-card"><span>01</span><p>右键左上角拖动区打开菜单<br><small>网页内右键保留网站原有操作</small></p></div><div class="guide-card"><span>02</span><p>拖动窗口边缘调整尺寸<br><small>使用托盘或快捷键找回隐藏窗口</small></p></div><footer>临时浏览会话 · 关闭后清理</footer></main>`;
+  app.innerHTML = `<main class="welcome"><div class="brand-mark">m<span>↗</span></div><div class="eyebrow">MINIBROWSER</div><h1>${h('guide.title')}</h1><p>${h('guide.intro')}</p><div class="guide-card"><span>01</span><p>${h('guide.menu')}<br><small>${h('guide.context')}</small></p></div><div class="guide-card"><span>02</span><p>${h('guide.resize')}<br><small>${h('guide.recover')}</small></p></div><footer>${h('guide.footer')}</footer></main>`;
 } else {
   app.innerHTML = `
-    <div id="toolbar" class="toolbar" title="按住移动窗口，右键打开菜单" aria-label="窗口拖动区">
+    <div id="toolbar" class="toolbar" title="${h('toolbar.hint')}" aria-label="${h('toolbar.label')}">
       <span class="drag-grip" aria-hidden="true">⠿</span>
     </div>
-    <section id="panel" class="panel" hidden aria-label="窗口设置">
-      <header><div><div class="eyebrow">MINIBROWSER</div><h1>窗口设置</h1></div><span class="session-badge"><i></i> 临时会话</span></header>
+    <section id="panel" class="panel" hidden aria-label="${h('settings.title')}">
+      <header><div><div class="eyebrow">MINIBROWSER</div><h1>${h('settings.title')}</h1></div><span class="session-badge"><i></i> ${h('settings.session')}</span></header>
       <form id="settings-form">
         <div class="scroll-area">
           <div id="notice" class="notice" role="status" hidden></div>
-          <label class="field-label" for="url">网页地址</label>
-          <input id="url" type="text" inputmode="url" spellcheck="false" placeholder="输入网址，如 example.com" autocomplete="off" />
-          <p class="hint">确认后保存为下次启动地址</p>
+          <label class="field-label" for="url">${h('settings.url')}</label>
+          <input id="url" type="text" inputmode="url" spellcheck="false" placeholder="${h('settings.urlPlaceholder')}" autocomplete="off" />
+          <p class="hint">${h('settings.urlHint')}</p>
           <div class="divider"></div>
-          <label class="setting-row" for="topmost"><span><strong>窗口置顶</strong><small>保持在其他窗口上方</small></span><input id="topmost" type="checkbox" class="switch" /></label>
-          <label class="setting-row" for="pause-media"><span><strong>隐藏时暂停媒体</strong><small>再次显示后，手动继续播放</small></span><input id="pause-media" type="checkbox" class="switch" /></label>
-          <div class="slider-heading"><label class="field-label" for="opacity">不透明度</label><output id="opacity-value">100%</output></div>
+          <label class="setting-row" for="topmost"><span><strong>${h('settings.topmost')}</strong><small>${h('settings.topmostHint')}</small></span><input id="topmost" type="checkbox" class="switch" /></label>
+          <label class="setting-row" for="pause-media"><span><strong>${h('settings.pause')}</strong><small>${h('settings.pauseHint')}</small></span><input id="pause-media" type="checkbox" class="switch" /></label>
+          <div class="slider-heading"><label class="field-label" for="opacity">${h('settings.opacity')}</label><output id="opacity-value">100%</output></div>
           <input id="opacity" type="range" min="${parameters.limits.minOpacity * 100}" max="${parameters.limits.maxOpacity * 100}" step="1" value="${parameters.defaults.opacity * 100}" />
-          <div class="range-labels"><span>更通透</span><span>完全不透明</span></div>
-          <div class="slider-heading"><label class="field-label" for="corner-radius">窗口圆角</label><output id="corner-radius-value">0 px</output></div>
+          <div class="range-labels"><span>${h('settings.transparent')}</span><span>${h('settings.opaque')}</span></div>
+          <div class="slider-heading"><label class="field-label" for="corner-radius">${h('settings.radius')}</label><output id="corner-radius-value">0 px</output></div>
           <input id="corner-radius" type="range" min="${parameters.limits.minCornerRadius}" max="${parameters.limits.maxCornerRadius}" step="${parameters.limits.cornerRadiusStep}" value="${parameters.defaults.cornerRadius}" />
-          <div class="range-labels"><span>直角</span><span>更圆润</span></div>
-          <p class="hint">实时预览 · 确认保存，取消恢复</p>
-          <div class="theme-field"><label class="field-label" for="accent-hex">主题色</label>
-            <div class="theme-editor"><input id="accent-picker" type="color" aria-label="选择主题色" value="${parameters.defaults.accentColor}" /><input id="accent-hex" type="text" aria-label="主题色 HEX" pattern="#[0-9A-Fa-f]{6}" required maxlength="7" spellcheck="false" autocomplete="off" value="${parameters.defaults.accentColor}" /><button id="accent-reset" type="button" class="text-button">恢复默认</button></div>
-            <div class="theme-swatches" role="group" aria-label="预设主题色">${[parameters.defaults.accentColor, '#7C3AED', '#DB2777', '#DC2626', '#B45309', '#047857', '#000000', '#FFFFFF'].map(color => `<button type="button" class="theme-swatch" data-color="${color}" aria-label="主题色 ${color}" aria-pressed="false"></button>`).join('')}</div>
-            <p class="hint">浅色界面 · 仅在面板中预览，确认后应用</p>
+          <div class="range-labels"><span>${h('settings.square')}</span><span>${h('settings.round')}</span></div>
+          <p class="hint">${h('settings.previewHint')}</p>
+          <div class="theme-field"><label class="field-label" for="accent-hex">${h('settings.accent')}</label>
+            <div class="theme-editor"><input id="accent-picker" type="color" aria-label="${h('settings.pickColor')}" value="${parameters.defaults.accentColor}" /><input id="accent-hex" type="text" aria-label="${h('settings.colorHex')}" pattern="#[0-9A-Fa-f]{6}" required maxlength="7" spellcheck="false" autocomplete="off" value="${parameters.defaults.accentColor}" /><button id="accent-reset" type="button" class="text-button">${h('settings.reset')}</button></div>
+            <div class="theme-swatches" role="group" aria-label="${h('settings.presets')}">${[parameters.defaults.accentColor, '#7C3AED', '#DB2777', '#DC2626', '#B45309', '#047857', '#000000', '#FFFFFF'].map(color => `<button type="button" class="theme-swatch" data-color="${color}" aria-label="${h('settings.accent')} ${color}" aria-pressed="false"></button>`).join('')}</div>
+            <p class="hint">${h('settings.themeHint')}</p>
           </div>
-          <label class="field-label shortcut-label" for="shortcut">显示 / 隐藏快捷键</label>
-          <div class="shortcut-row"><input id="shortcut" readonly placeholder="点击后按下组合键" autocomplete="off" /><button id="clear-shortcut" type="button" class="text-button">清除</button></div>
-          <p class="hint">全局生效 · 冲突时可通过托盘恢复窗口</p>
+          <label class="field-label shortcut-label" for="shortcut">${h('settings.shortcut')}</label>
+          <div class="shortcut-row"><input id="shortcut" readonly placeholder="${h('settings.recordShortcut')}" autocomplete="off" /><button id="clear-shortcut" type="button" class="text-button">${h('settings.clear')}</button></div>
+          <p class="hint">${h('settings.shortcutHint')}</p>
           <div class="divider"></div>
-          <div class="actions"><button id="refresh" type="button">↻ 刷新网页</button><button id="clear-cache" type="button">清空缓存</button><button id="close" type="button" class="danger">关闭</button></div>
-          <div id="clear-confirm" class="confirm-box" hidden><strong>清空整个浏览会话？</strong><p>缓存、Cookie 和网站存储将被清除，你会退出登录。此操作无法撤销。</p><div><button id="clear-no" type="button">返回</button><button id="clear-yes" type="button" class="danger">清空并重新加载</button></div></div>
-          <p class="footnote">应用设置保存在程序旁，网页数据在退出后清理。</p>
+          <div class="actions"><button id="refresh" type="button">↻ ${h('settings.refresh')}</button><button id="clear-cache" type="button">${h('settings.clearCache')}</button><button id="close" type="button" class="danger">${h('menu.close')}</button></div>
+          <div id="clear-confirm" class="confirm-box" hidden><strong>${h('settings.clearTitle')}</strong><p>${h('settings.clearBody')}</p><div><button id="clear-no" type="button">${h('settings.back')}</button><button id="clear-yes" type="button" class="danger">${h('settings.clearReload')}</button></div></div>
+          <p class="footnote">${h('settings.footnote')}</p>
         </div>
-        <footer class="form-footer"><span id="saving" aria-live="polite"></span><button id="cancel" type="button">取消</button><button id="confirm" type="submit" class="primary">确认</button></footer>
+        <footer class="form-footer"><span id="saving" aria-live="polite"></span><button id="cancel" title="${h('settings.cancel')}" type="button">${h('settings.cancel')}</button><button id="confirm" title="${h('settings.confirm')}" type="submit" class="primary">${h('settings.confirm')}</button></footer>
       </form>
     </section>`;
 
@@ -156,7 +157,7 @@ if (view !== 'controls') {
     event.preventDefault();
     if (['Control', 'Shift', 'Alt', 'Meta'].includes(event.key)) return;
     if (!event.ctrlKey && !event.altKey && !event.metaKey && !/^F\d+$/.test(event.key)) {
-      report('请使用 Ctrl、Alt 或 Win 加其他按键，或使用功能键。');
+      report(t('errors.shortcutCombination'));
       return;
     }
     const keys = [event.ctrlKey && 'Ctrl', event.altKey && 'Alt', event.shiftKey && 'Shift', event.metaKey && 'Super'].filter(Boolean);
@@ -173,7 +174,7 @@ if (view !== 'controls') {
   element('clear-no').addEventListener('click', () => { confirmation.hidden = true; });
   element('clear-yes').addEventListener('click', async () => {
     if (busy) return;
-    setBusy(true, '正在清理…');
+    setBusy(true, t('settings.clearing'));
     await stopPreviews();
     try { await invoke('clear_session'); } catch (error) { await refreshEpoch(); opacityPreview.resume(); cornerPreview.resume(); setBusy(false); report(error); }
   });
@@ -184,7 +185,7 @@ if (view !== 'controls') {
   element<HTMLFormElement>('settings-form').addEventListener('submit', async (event) => {
     event.preventDefault();
     if (!settings || busy) return;
-    setBusy(true, '正在保存…');
+    setBusy(true, t('settings.saving'));
     await flushPreviews();
     const draft: Settings = { ...settings, startupUrl: url.value, alwaysOnTop: topmost.checked,
       opacity: Number(opacity.value) / 100, shortcut: shortcut.value || null, pauseMediaOnHide: pause.checked,
@@ -196,7 +197,7 @@ if (view !== 'controls') {
         previewEpoch = result.previewEpoch;
         editedUrl = result.navigationFailed;
         setBusy(false);
-        notice.textContent = '设置已保存；' + result.warnings.join('；'); notice.hidden = false;
+        notice.textContent = t('settings.savedWarnings', {warnings: result.warnings.join(t('common.separator'))}); notice.hidden = false;
       }
     } catch (error) { await refreshEpoch(); setBusy(false); report(error); }
   });

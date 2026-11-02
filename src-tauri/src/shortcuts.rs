@@ -7,7 +7,7 @@ pub fn parse(value: &Option<String>) -> Result<Option<Shortcut>, String> {
         .as_ref()
         .map(|s| {
             s.parse::<Shortcut>()
-                .map_err(|_| "快捷键无效，请使用修饰键加字母、数字或功能键".to_string())
+                .map_err(|_| crate::localization::text("errors.shortcutInvalid").to_string())
         })
         .transpose()
 }
@@ -23,7 +23,9 @@ pub fn register(app: &AppHandle, shortcut: Shortcut) -> Result<(), String> {
                 });
             }
         })
-        .map_err(|e| format!("无法注册快捷键，它可能已被其他应用占用：{e}"))
+        .map_err(|e| {
+            crate::localization::format("errors.shortcutRegister", &[("error", (e).to_string())])
+        })
 }
 
 pub fn startup(app: &AppHandle) {
@@ -33,9 +35,20 @@ pub fn startup(app: &AppHandle) {
         let result =
             parse(&settings.shortcut).and_then(|shortcut| register(app, shortcut.unwrap()));
         if let Err(error) = result {
-            *state.warning.lock().unwrap() = Some(format!(
-                "快捷键 {value} 未生效：{error}。可通过托盘恢复窗口。"
-            ));
+            let message = crate::localization::format(
+                "errors.shortcutStartup",
+                &[
+                    ("shortcut", (value).to_string()),
+                    ("error", (error).to_string()),
+                ],
+            );
+            let mut warning = state.warning.lock().unwrap();
+            *warning = Some(match warning.take() {
+                Some(previous) => {
+                    [previous, message].join(crate::localization::text("common.separator"))
+                }
+                None => message,
+            });
         }
     }
 }

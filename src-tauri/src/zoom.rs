@@ -57,7 +57,13 @@ pub fn install(browser: &WebviewWindow, app: &AppHandle) -> Result<(), String> {
         browser
             .with_webview(move |webview| {
                 if let Err(error) = native::install(webview.controller(), &handle, &session) {
-                    crate::windows::notify(&handle, &format!("无法启用网站缩放记忆：{error}"));
+                    crate::windows::notify(
+                        &handle,
+                        &crate::localization::format(
+                            "errors.zoomEnable",
+                            &[("error", (error).to_string())],
+                        ),
+                    );
                 }
             })
             .map_err(|e| e.to_string())?;
@@ -150,7 +156,10 @@ mod native {
                         {
                             crate::windows::notify(
                                 &error_app,
-                                &format!("无法恢复网页缩放：{error}"),
+                                &crate::localization::format(
+                                    "errors.zoomRestore",
+                                    &[("error", (error).to_string())],
+                                ),
                             );
                         }
                     }

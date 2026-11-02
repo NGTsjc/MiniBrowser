@@ -58,7 +58,7 @@ try {
   const oldEpoch=(await controls.invoke('get_settings')).previewEpoch;
   await controls.evaluate(`(()=>{for(let i=0;i<120;i++){for(const[id,value]of [['opacity',20+i%80],['corner-radius',i%129]]){const input=document.getElementById(id);input.value=String(value);input.dispatchEvent(new Event('input',{bubbles:true}))}}document.getElementById('opacity').value='95';document.getElementById('opacity').dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('corner-radius').value='128';document.getElementById('corner-radius').dispatchEvent(new Event('input',{bubbles:true}));document.getElementById('settings-form').requestSubmit()})()`);
   await closed();assert.equal((await saved()).opacity,.95);assert.equal((await saved()).cornerRadius,128);
-  await assert.rejects(controls.invoke('preview_corner_radius',{radius:0,epoch:oldEpoch}),/失效/);
+  await assert.rejects(controls.invoke('preview_corner_radius',{radius:0,epoch:oldEpoch}),/expired/);
   await open();
   await controls.evaluate(`(()=>{for(let i=0;i<100;i++){const input=document.getElementById('corner-radius');input.value=String(i);input.dispatchEvent(new Event('input',{bubbles:true}))}document.getElementById('cancel').click()})()`);
   await closed();assert.equal((await saved()).cornerRadius,128);
@@ -67,14 +67,14 @@ try {
 
   await open();await set('url',fixtureUrl+'draft');await set('opacity',60);
   const temp=path.join(root,'MiniBrowser.data/settings.json.tmp');await mkdir(temp);
-  await submit();await until(()=>controls.evaluate(`!document.getElementById('confirm').disabled && document.getElementById('notice').textContent.includes('保存失败')`));
+  await submit();await until(()=>controls.evaluate(`!document.getElementById('confirm').disabled && document.getElementById('notice').textContent.includes('Could not save settings')`));
   assert.equal((await saved()).opacity,original.opacity);
   assert.equal(await controls.evaluate(`document.getElementById('url').value`),fixtureUrl+'draft');
   await rmdir(temp);await set('opacity',70);await submit();await closed();assert.equal((await saved()).opacity,.7);
   pass('failed file replacement rolls back, retains draft and refreshes epoch for a successful retry');
 
   await open();await faults({navigation:true});await set('url',fixtureUrl+'saved-but-not-loaded');await set('opacity',75);await submit();
-  await until(()=>controls.evaluate(`!document.getElementById('confirm').disabled && document.getElementById('notice').textContent.includes('设置已保存')`));
+  await until(()=>controls.evaluate(`!document.getElementById('confirm').disabled && document.getElementById('notice').textContent.includes('Settings saved')`));
   assert.equal((await saved()).startupUrl,fixtureUrl+'saved-but-not-loaded');
   assert.equal((await saved()).opacity,.75);
   assert.equal(await browser.evaluate('location.href'),fixtureUrl+'draft');
@@ -85,7 +85,7 @@ try {
 
   for(const name of ['media_sync','panel_close']) {
     await open();await faults({[name]:true});await set('opacity',80);await submit();
-    await until(()=>controls.evaluate(`!document.getElementById('confirm').disabled && document.getElementById('notice').textContent.includes('设置已保存')`));
+    await until(()=>controls.evaluate(`!document.getElementById('confirm').disabled && document.getElementById('notice').textContent.includes('Settings saved')`));
     assert.equal((await saved()).opacity,.8);
     await faults({});await controls.evaluate(`document.getElementById('cancel').click()`);await closed();
   }

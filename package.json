@@ -11,14 +11,15 @@
     "build": "tauri build --no-bundle -- --locked && node scripts/package.mjs",
     "build:debug": "pnpm build:ui && cargo build --manifest-path src-tauri/Cargo.toml --features custom-protocol --locked",
     "check": "tsc --noEmit",
-    "test:unit": "tsc --strict --target ES2022 --module ES2022 --skipLibCheck --outDir .cache/unit src/preview.ts && node --test scripts/tests/sync-version.test.mjs scripts/tests/preview.test.mjs",
+    "test:unit": "tsc --strict --target ES2022 --module ES2022 --skipLibCheck --outDir .cache/unit src/preview.ts src/i18n-format.ts && node --test scripts/tests/sync-version.test.mjs scripts/tests/preview.test.mjs scripts/tests/i18n.test.mjs",
     "test:maintenance": "node scripts/tests/maintenance.mjs",
     "test:performance": "node scripts/tests/performance.mjs",
     "test:native": "cargo test --manifest-path src-tauri/Cargo.toml --locked",
     "test:smoke": "node scripts/tests/smoke.mjs",
     "test:release": "node scripts/tests/release-smoke.mjs",
     "tauri": "tauri",
-    "version:set": "node scripts/sync-version.mjs"
+    "version:set": "node scripts/sync-version.mjs",
+    "test:localization": "node scripts/tests/localization.mjs"
   },
   "dependencies": {
     "@tauri-apps/api": "2.12.4"

@@ -38,6 +38,7 @@ while (binary.readUInt32LE(descriptor + 12)) {
 }
 assert.ok(!imports.some(name => /^(WebView2Loader|VCRUNTIME\d+|MSVCP\d+)\.dll$/i.test(name)), 'No sidecar loader or VC++ runtime DLL required');
 await mkdir('release', { recursive: true });
+await copyFile('assets/locales/locale.example.json','release/locale.example.json');
 const destination = 'release/MiniBrowser.exe';
 const staged = 'release/MiniBrowser.next.exe';
 await copyFile('src-tauri/target/release/MiniBrowser.exe', staged);

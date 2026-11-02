@@ -36,6 +36,7 @@ pub fn defaults() -> Settings {
         pause_media_on_hide: true,
         accent_color: DEFAULT_ACCENT.into(),
         corner_radius: 0,
+        language_file: None,
     }
 }
 
@@ -54,14 +55,18 @@ pub fn public() -> Value {
 }
 
 pub fn script() -> String {
+    local_script("__MINIBROWSER_PARAMETERS__", &public())
+}
+
+pub fn local_script(name: &str, value: &Value) -> String {
     format!(
         "(()=>{{const u=new URL(location.href);if(window.top!==window)return;\
         const local=(u.protocol==='tauri:'||u.origin==='http://tauri.localhost'||\
         ({debug}&&u.origin==='http://127.0.0.1:1420'))&&\
         (u.pathname==='/'||u.pathname==='/index.html');if(!local)return;\
-        window.__MINIBROWSER_PARAMETERS__={data};}})()",
+        window.{name}={data};}})()",
         debug = cfg!(debug_assertions),
-        data = public()
+        data = value
     )
 }
 

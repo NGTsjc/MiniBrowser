@@ -16,8 +16,8 @@ body.context-menu-open { background: var(--surface); }
 .menu-item:active { background: var(--accent-hover); }
 .menu-icon { display: inline-flex; width: 17px; height: 17px; color: var(--accent-ink); flex-shrink: 0; }
 .menu-icon svg { width: 100%; height: 100%; }
-.menu-label { white-space: nowrap; }
-.menu-hint { margin-left: auto; color: var(--muted); font-size: 10px; white-space: nowrap; max-width: 96px; overflow: hidden; text-overflow: ellipsis; }
+.menu-label { white-space: nowrap; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
+.menu-hint { margin-left: auto; color: var(--muted); font-size: 10px; white-space: nowrap; max-width: 84px; min-width: 0; overflow: hidden; text-overflow: ellipsis; }
 .menu-hint:empty { display: none; }
 .menu-separator { height: 1px; background: var(--border); margin: 3px 8px; opacity: .65; }
 .menu-danger { color: var(--danger); }

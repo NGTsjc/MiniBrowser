@@ -200,7 +200,7 @@ pub fn install(window: &WebviewWindow, app: &AppHandle) -> Result<(), String> {
                     unsafe {
                         drop(Box::from_raw(data));
                     }
-                    crate::windows::notify(&handle, "无法安装窗口边界保护。");
+                    crate::windows::notify(&handle, crate::localization::text("errors.bounds"));
                 }
             }
         })

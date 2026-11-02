@@ -3,7 +3,7 @@
 pub fn fail(name: &str) -> Result<(), String> {
     #[cfg(debug_assertions)]
     if value(name).as_bool() == Some(true) {
-        return Err(format!("测试故障：{name}"));
+        return Err(format!("Test fault: {name}"));
     }
     let _ = name;
     Ok(())

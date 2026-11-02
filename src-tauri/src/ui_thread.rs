@@ -20,12 +20,16 @@ fn receive<T>(
                 .compare_exchange(0, 2, Ordering::SeqCst, Ordering::SeqCst)
                 .is_ok()
             {
-                Err("等待窗口操作超时".into())
+                Err(crate::localization::text("errors.uiTimeout").into())
             } else {
-                receive.recv().map_err(|_| "窗口操作已中断".to_string())?
+                receive
+                    .recv()
+                    .map_err(|_| crate::localization::text("errors.uiInterrupted").to_string())?
             }
         }
-        Err(RecvTimeoutError::Disconnected) => Err("窗口操作已中断".into()),
+        Err(RecvTimeoutError::Disconnected) => {
+            Err(crate::localization::text("errors.uiInterrupted").into())
+        }
     }
 }
 

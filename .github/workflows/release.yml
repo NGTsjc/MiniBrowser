@@ -55,7 +55,7 @@ jobs:
         run: |
           $zipName = "MiniBrowser_$($env:RELEASE_VERSION)_win64.zip"
           $zipPath = Join-Path release $zipName
-          Compress-Archive -LiteralPath release/MiniBrowser.exe, release/MiniBrowser.exe.sha256 -DestinationPath $zipPath
+          Compress-Archive -LiteralPath release/MiniBrowser.exe, release/MiniBrowser.exe.sha256, release/locale.example.json -DestinationPath $zipPath
           $hash = (Get-FileHash -LiteralPath $zipPath -Algorithm SHA256).Hash.ToLowerInvariant()
           Set-Content -LiteralPath "$zipPath.sha256" -Value "$hash  $zipName" -Encoding utf8NoBOM
       - name: Upload release build
@@ -65,6 +65,7 @@ jobs:
           path: |
             release/MiniBrowser.exe
             release/MiniBrowser.exe.sha256
+            release/locale.example.json
             release/MiniBrowser_*.zip
             release/MiniBrowser_*.zip.sha256
           if-no-files-found: error
@@ -74,7 +75,7 @@ jobs:
         with:
           name: MiniBrowser ${{ github.ref_name }}
           tag: ${{ github.ref_name }}
-          artifacts: release/MiniBrowser.exe,release/MiniBrowser.exe.sha256,release/MiniBrowser_*.zip,release/MiniBrowser_*.zip.sha256
+          artifacts: release/MiniBrowser.exe,release/MiniBrowser.exe.sha256,release/locale.example.json,release/MiniBrowser_*.zip,release/MiniBrowser_*.zip.sha256
           artifactErrorsFailBuild: true
           generateReleaseNotes: true
           immutableCreate: true

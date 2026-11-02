@@ -109,7 +109,10 @@ fn rollback(app: &AppHandle, previous: Option<(i32, i32)>, error: String) -> Res
     *app.state::<AppState>().context_menu.lock().unwrap() = previous;
     let mut errors = vec![error];
     if let Err(e) = windows::sync_controls(app) {
-        errors.push(format!("恢复菜单位置失败：{e}"));
+        errors.push(crate::localization::format(
+            "errors.menuRollback",
+            &[("error", (e).to_string())],
+        ));
     }
     let event = if previous.is_some() {
         emit_open(app)
@@ -120,7 +123,7 @@ fn rollback(app: &AppHandle, previous: Option<(i32, i32)>, error: String) -> Res
     if let Err(e) = event {
         errors.push(e);
     }
-    Err(errors.join("；"))
+    Err(errors.join(crate::localization::text("common.separator")))
 }
 
 pub fn perform(app: &AppHandle, action: &str) -> Result<(), String> {
@@ -128,14 +131,14 @@ pub fn perform(app: &AppHandle, action: &str) -> Result<(), String> {
         action,
         "settings" | "refresh" | "hide" | "close" | "restore" | "restart" | "devtools"
     ) {
-        return Err("不支持的菜单操作".into());
+        return Err(crate::localization::text("errors.menuAction").into());
     }
     if matches!(action, "close" | "restart") {
         lifecycle::exit(app, action == "restart");
         return Ok(());
     }
     if app.state::<AppState>().busy.load(Ordering::SeqCst) {
-        return Err("正在处理，请稍候".into());
+        return Err(crate::localization::text("errors.busy").into());
     }
     dismiss(app)?;
     match action {
@@ -165,7 +168,9 @@ pub fn perform(app: &AppHandle, action: &str) -> Result<(), String> {
         }
         "restart" => lifecycle::exit(app, true),
         "devtools" => {
-            let browser = app.get_webview_window("browser").ok_or("浏览窗口已关闭")?;
+            let browser = app
+                .get_webview_window("browser")
+                .ok_or(crate::localization::text("errors.browserClosed"))?;
             browser.open_devtools();
         }
         _ => unreachable!(),

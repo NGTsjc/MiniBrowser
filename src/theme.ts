@@ -1,3 +1,4 @@
+import { t } from './i18n';
 import type { Settings } from './types';
 import { parameters } from './parameters';
 
@@ -36,7 +37,7 @@ export function bindThemeEditor(panel: HTMLElement) {
   const hex = panel.querySelector<HTMLInputElement>('#accent-hex')!;
   const swatches = [...panel.querySelectorAll<HTMLButtonElement>('[data-color]')];
   const preview = (value: string) => {
-    hex.setCustomValidity(validAccent(value) ? '' : '请输入 #RRGGBB 格式的颜色');
+    hex.setCustomValidity(validAccent(value) ? '' : t('errors.colorInput'));
     hex.setAttribute('aria-invalid', String(!validAccent(value)));
     if (!validAccent(value)) return;
     picker.value = value;

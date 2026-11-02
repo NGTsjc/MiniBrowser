@@ -2,7 +2,7 @@
 
 所有命令均在仓库根目录执行，优先使用 `pnpm`；PowerShell 拦截 `pnpm.ps1` 时使用 `pnpm.cmd`。
 
-当前共 16 个脚本：构建／版本工具 2 个、测试入口 4 个、单元测试 2 个、集成测试子模块 4 个、底层工具 3 个、早期图标工具 1 个。通常只运行 `package.json` 中的命令，子模块由入口自动调用。
+当前共 18 个脚本：构建／版本工具 2 个、测试入口 5 个、单元测试 3 个、集成测试子模块 4 个、底层工具 3 个、早期图标工具 1 个。通常只运行 `package.json` 中的命令，子模块由入口自动调用。
 
 ```text
 scripts/
@@ -28,6 +28,7 @@ scripts/
 | --- | --- | --- |
 | `smoke.mjs` | `pnpm test:smoke` | 完整桌面集成回归：设置、主题、拖动、缩放、圆角、透明度、菜单、托盘、快捷键、媒体、网站缩放、新页面拦截、单实例及会话清理；先 `pnpm build:debug` |
 | `maintenance.mjs` | `pnpm test:maintenance` | 故障与竞争专项：保存前／后失败、草稿保护、预览失效、原生操作回滚、尺寸保存交错、重建期间关闭／重启、不可恢复错误退出；先 `pnpm build:debug` |
+| `localization.mjs` | `pnpm test:localization` | 英文回退、中文覆盖、重启／会话重建、文案转义、极小窗口和目录联接越界检查；先 `pnpm build:debug` |
 | `release-smoke.mjs` | `pnpm test:release` | 对实际打包 EXE 检查首显、70% 不透明度、任务栏样式、快捷键显隐、EXE 相对路径存储与正常关闭；先 `pnpm build` |
 | `performance.mjs` | `pnpm test:performance` | 固定本地页面默认采样三轮，记录启动、移动／缩放／预览耗时、线程、工作集及 GDI 资源；先 `pnpm build:debug` |
 
@@ -44,9 +45,10 @@ pnpm test:performance src-tauri/target/debug/MiniBrowser.exe current 3
 | 文件 | 检查内容 |
 | --- | --- |
 | `preview.test.mjs` | 预览调度只保留进行中请求与最新值、确认刷新最终值、取消丢弃旧请求／错误，以及没有动画帧时的刷新 |
+| `i18n.test.mjs` | 文案参数单次替换，以及 DOM 内容和属性所用的文本转义 |
 | `sync-version.test.mjs` | 版本格式、非法标签、四处版本同步、只读检查与修改前校验 |
 
-统一执行 `pnpm test:unit`。该入口先把 `src/preview.ts` 编译到 `.cache/unit/`，再用 Node.js 内置的 `node:test` 和 `node:assert/strict` 执行断言。不要绕过编译直接运行预览测试。
+统一执行 `pnpm test:unit`。该入口先把预览调度与文案格式化模块编译到 `.cache/unit/`，再用 Node.js 内置的 `node:test` 和 `node:assert/strict` 执行断言。不要绕过编译直接运行依赖这些模块的测试。
 
 Rust 单元测试不在本目录，位于 `src-tauri/src/*.rs` 的 `#[cfg(test)]` 模块，执行 `pnpm test:native`。覆盖配置兜底、原子写入／占用重试、几何、桌面边界、会话隔离、缩放记忆及 UI 线程任务等逻辑；命令名中的 native 不代表会启动 GUI。
 
@@ -113,6 +115,7 @@ pnpm test:maintenance
 | --- | --- |
 | `.cache/smoke-portable/<时间戳>/` | 完整回归报告、截图与隔离数据 |
 | `.cache/maintenance-checks/<时间戳>/` | 专项报告、失败现场与隔离数据 |
+| `.cache/localization-checks/<时间戳>/` | 语言专项报告、截图与隔离数据 |
 | `.cache/maintenance-performance/<标签>-<时间戳>/` | 每轮性能样本、汇总与被测 EXE 哈希 |
 | `.cache/release-smoke/<时间戳>/` | 发布版检查使用的隔离 EXE 与数据目录；通过结果输出到终端 |
 | `.cache/version-tests/`、`.cache/unit/` | 版本测试临时夹具与编译后的预览模块 |
@@ -123,4 +126,4 @@ pnpm test:maintenance
 
 `check.yml` 和 `release.yml` 均执行版本检查、Node.js 单元测试、前端构建／类型检查、Rust 格式／Clippy／单元测试以及发布构建。后者另执行版本同步、ZIP／SHA256 打包与 Release 发布。
 
-目前 CI 不执行真实桌面的 smoke、maintenance、performance 和 release-smoke；它们在本地 Windows 桌面串行运行。CI 构建通过不能代替本地原生验收。实机验证范围与未覆盖环境见 [原生验收说明](../docs/verification.md)，本地各轮实际结果以 `.cache/` 中的报告为准。
+目前 CI 不执行真实桌面的 smoke、maintenance、localization、performance 和 release-smoke；它们在本地 Windows 桌面串行运行。CI 构建通过不能代替本地原生验收。实机验证范围与未覆盖环境见 [原生验收说明](../docs/verification.md)，本地各轮实际结果以 `.cache/` 中的报告为准。

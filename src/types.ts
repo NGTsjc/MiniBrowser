@@ -9,6 +9,7 @@ export interface Settings {
   pauseMediaOnHide: boolean;
   accentColor: string;
   cornerRadius: number;
+  languageFile: string | null;
 }
 
 export interface Snapshot {

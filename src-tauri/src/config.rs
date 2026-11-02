@@ -22,6 +22,8 @@ pub struct Settings {
     pub pause_media_on_hide: bool,
     pub accent_color: String,
     pub corner_radius: u32,
+    #[serde(default)]
+    pub language_file: Option<String>,
 }
 
 impl Default for Settings {
@@ -46,13 +48,14 @@ pub fn normalize_url(input: &str) -> Result<String, String> {
     } else {
         format!("https://{input}")
     };
-    let url = url::Url::parse(&candidate).map_err(|_| "请输入有效的网页地址".to_string())?;
+    let url = url::Url::parse(&candidate)
+        .map_err(|_| crate::localization::text("errors.url").to_string())?;
     if !matches!(url.scheme(), "http" | "https")
         || url.host_str().is_none()
         || !url.username().is_empty()
         || url.password().is_some()
     {
-        return Err("仅支持不包含用户名或密码的 HTTP / HTTPS 网页地址".into());
+        return Err(crate::localization::text("errors.urlScheme").into());
     }
     Ok(url.to_string())
 }
@@ -60,19 +63,24 @@ pub fn normalize_url(input: &str) -> Result<String, String> {
 impl Settings {
     pub fn validate(&mut self) -> Result<(), String> {
         if self.corner_radius > p::MAX_CORNER_RADIUS {
-            return Err(format!("窗口圆角必须在 0～{} 之间", p::MAX_CORNER_RADIUS));
+            return Err(crate::localization::format(
+                "errors.radius",
+                &[("max", (p::MAX_CORNER_RADIUS).to_string())],
+            ));
         }
         if !valid_accent(&self.accent_color) {
-            return Err("主题色必须为 #RRGGBB 格式".into());
+            return Err(crate::localization::text("errors.color").into());
         }
         self.accent_color.make_ascii_uppercase();
         self.version = p::CONFIG_VERSION;
         self.startup_url = normalize_url(&self.startup_url)?;
         if !self.opacity.is_finite() || !(p::MIN_OPACITY..=p::MAX_OPACITY).contains(&self.opacity) {
-            return Err(format!(
-                "不透明度必须在 {}%～{}% 之间",
-                p::MIN_OPACITY * 100.,
-                p::MAX_OPACITY * 100.
+            return Err(crate::localization::format(
+                "errors.opacityRange",
+                &[
+                    ("min", (p::MIN_OPACITY * 100.).to_string()),
+                    ("max", (p::MAX_OPACITY * 100.).to_string()),
+                ],
             ));
         }
         if !self.width.is_finite()
@@ -80,13 +88,25 @@ impl Settings {
             || !(p::MIN_WIDTH..=p::MAX_SIZE).contains(&self.width)
             || !(p::MIN_HEIGHT..=p::MAX_SIZE).contains(&self.height)
         {
-            return Err("窗口尺寸无效".into());
+            return Err(crate::localization::text("errors.size").into());
         }
         self.shortcut = self
             .shortcut
             .as_ref()
             .map(|s| s.trim().to_owned())
             .filter(|s| !s.is_empty());
+        self.language_file = self
+            .language_file
+            .take()
+            .map(|s| s.trim().to_owned())
+            .filter(|s| !s.is_empty());
+        if self
+            .language_file
+            .as_deref()
+            .is_some_and(|s| !crate::localization::valid_relative(s))
+        {
+            return Err(crate::localization::text("errors.localePath").into());
+        }
         Ok(())
     }
 }
@@ -98,14 +118,16 @@ pub struct PortableStore {
 
 pub struct LoadedSettings {
     pub settings: Settings,
-    pub warning: Option<String>,
+    pub warning: Option<&'static str>,
     pub preserve_file: bool,
 }
 
 impl PortableStore {
     pub fn beside_executable() -> Result<Self, String> {
         let exe = std::env::current_exe().map_err(|e| e.to_string())?;
-        let parent = exe.parent().ok_or("无法定位 EXE 目录")?;
+        let parent = exe
+            .parent()
+            .ok_or(crate::localization::text("errors.exeDirectory"))?;
         Self::at(parent.join("MiniBrowser.data"))
     }
 
@@ -126,7 +148,7 @@ impl PortableStore {
         let value: Value = match fs::read(&path) {
             Ok(bytes) => match serde_json::from_slice(&bytes) {
                 Ok(Value::Object(map)) => Value::Object(map),
-                _ => return fallback("配置文件损坏，已使用默认值；确认设置前将保留原文件。"),
+                _ => return fallback("errors.configDamaged"),
             },
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => {
                 return LoadedSettings {
@@ -135,14 +157,14 @@ impl PortableStore {
                     preserve_file: false,
                 }
             }
-            Err(_) => return fallback("无法读取配置，已使用默认值；确认设置前将保留原文件。"),
+            Err(_) => return fallback("errors.configRead"),
         };
         if value
             .get("version")
             .and_then(Value::as_u64)
             .is_some_and(|v| v != p::CONFIG_VERSION as u64)
         {
-            return fallback("配置版本不受支持，已使用默认值；确认设置前将保留原文件。");
+            return fallback("errors.configVersion");
         }
         let mut settings = Settings::default();
         let mut invalid = false;
@@ -171,6 +193,24 @@ impl PortableStore {
             valid_accent(v)
         });
         settings.accent_color.make_ascii_uppercase();
+        read!(
+            "languageFile",
+            language_file,
+            Option<String>,
+            |_: &Option<String>| true
+        );
+        settings.language_file = settings
+            .language_file
+            .map(|s| s.trim().to_owned())
+            .filter(|s| !s.is_empty());
+        if settings
+            .language_file
+            .as_deref()
+            .is_some_and(|s| !crate::localization::valid_relative(s))
+        {
+            settings.language_file = None;
+            invalid = true;
+        }
         read!("cornerRadius", corner_radius, u32, |v: &u32| *v
             <= p::MAX_CORNER_RADIUS);
         read!("pauseMediaOnHide", pause_media_on_hide, bool, |_: &bool| {
@@ -193,7 +233,7 @@ impl PortableStore {
         }
         LoadedSettings {
             settings,
-            warning: invalid.then(|| "部分配置字段无效，已对这些字段使用默认值。".into()),
+            warning: invalid.then_some("errors.configFields"),
             preserve_file: invalid,
         }
     }
@@ -202,7 +242,7 @@ impl PortableStore {
         let _write = self
             .write_lock
             .lock()
-            .map_err(|_| "配置写入锁不可用".to_string())?;
+            .map_err(|_| crate::localization::text("errors.configLock").to_string())?;
         let bytes = serde_json::to_vec_pretty(settings).map_err(|e| e.to_string())?;
         let temp = self.root.join("settings.json.tmp");
         let result = (|| {
@@ -215,7 +255,8 @@ impl PortableStore {
         if result.is_err() {
             let _ = fs::remove_file(temp);
         }
-        result.map_err(|e| format!("设置保存失败：{e}"))
+        result
+            .map_err(|e| crate::localization::format("errors.save", &[("error", (e).to_string())]))
     }
 
     pub fn new_session(&self) -> Result<PathBuf, String> {
@@ -257,16 +298,16 @@ impl PortableStore {
     }
 }
 
-fn fallback(message: &str) -> LoadedSettings {
+fn fallback(message: &'static str) -> LoadedSettings {
     LoadedSettings {
         settings: Settings::default(),
-        warning: Some(message.into()),
+        warning: Some(message),
         preserve_file: true,
     }
 }
 
 fn portable_error(error: std::io::Error) -> String {
-    format!("无法写入 EXE 同级的 MiniBrowser.data 目录，请将程序移到可写目录。\n{error}")
+    crate::localization::format("errors.portable", &[("error", error.to_string())])
 }
 
 #[cfg(windows)]
@@ -279,7 +320,7 @@ fn atomic_replace(from: &Path, to: &Path) -> Result<(), String> {
         },
     };
     if fs::metadata(to).is_ok_and(|m| m.permissions().readonly()) {
-        return Err("配置文件为只读，无法替换".into());
+        return Err(crate::localization::text("errors.readOnly").into());
     }
     let from: Vec<u16> = from.as_os_str().encode_wide().chain(Some(0)).collect();
     let to: Vec<u16> = to.as_os_str().encode_wide().chain(Some(0)).collect();
@@ -313,6 +354,44 @@ fn atomic_replace(from: &Path, to: &Path) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[test]
+    fn optional_language_file_is_tolerant_and_survives_saves() {
+        let store = store();
+        let path = store.root.join("settings.json");
+        for value in [
+            serde_json::Value::Null,
+            serde_json::json!(""),
+            serde_json::json!("  "),
+            serde_json::json!(4),
+            serde_json::json!([]),
+            serde_json::json!("../outside.json"),
+        ] {
+            fs::write(
+                &path,
+                serde_json::json!({"width":700,"languageFile":value}).to_string(),
+            )
+            .unwrap();
+            let loaded = store.load();
+            assert_eq!(loaded.settings.language_file, None);
+            assert_eq!(loaded.settings.width, 700.);
+        }
+        fs::write(
+            &path,
+            r#"{"languageFile":" locales/custom.json ","width":700}"#,
+        )
+        .unwrap();
+        let mut loaded = store.load();
+        assert_eq!(
+            loaded.settings.language_file.as_deref(),
+            Some("locales/custom.json")
+        );
+        loaded.settings.opacity = 0.8;
+        store.save(&loaded.settings).unwrap();
+        assert_eq!(store.load().settings, loaded.settings);
+        loaded.settings.language_file = Some("../outside.json".into());
+        assert!(loaded.settings.validate().is_err());
+        fs::remove_dir_all(store.root).unwrap();
+    }
     #[test]
     fn simultaneous_saves_never_share_an_active_temporary_file() {
         let store = std::sync::Arc::new(store());

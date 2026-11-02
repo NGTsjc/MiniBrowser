@@ -104,6 +104,7 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
         .zoom_hotkeys_enabled(cfg!(windows))
         .initialization_script_for_all_frames(script)
         .initialization_script(p::script())
+        .initialization_script(crate::localization::script())
         .initialization_script(crate::theme::script(&settings.accent_color))
         .on_navigation(move |url| {
             if !crate::operation::is_current_session(&handle, &navigation_session) {
@@ -116,7 +117,7 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
             if !allowed {
                 notify(
                     &handle,
-                    "已阻止外部协议或本地文件跳转，仅支持 HTTP / HTTPS 网页。",
+                    crate::localization::text("errors.navigationBlocked"),
                 );
             }
             allowed
@@ -129,7 +130,10 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
             if crate::operation::is_current_session(&download_handle, &download_session)
                 && matches!(event, tauri::webview::DownloadEvent::Requested { .. })
             {
-                notify(&download_handle, "精简浏览模式暂不支持下载。");
+                notify(
+                    &download_handle,
+                    crate::localization::text("errors.download"),
+                );
             }
             false
         })
@@ -181,9 +185,9 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
     };
     #[cfg(debug_assertions)]
     eprintln!("browser host: creating");
-    let browser = browser_builder
-        .build()
-        .map_err(|e| format!("无法创建浏览窗口，请检查 WebView2 Runtime 是否已安装。\n{e}"))?;
+    let browser = browser_builder.build().map_err(|e| {
+        crate::localization::format("errors.browserCreate", &[("error", e.to_string())])
+    })?;
     #[cfg(debug_assertions)]
     eprintln!("browser host: created");
     crate::appearance::install(&browser, app)?;
@@ -199,7 +203,7 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
         "controls",
         WebviewUrl::App("index.html?view=controls".into()),
     )
-    .title("MiniBrowser 设置")
+    .title(crate::localization::text("window.controlsTitle"))
     .devtools(false)
     .zoom_hotkeys_enabled(false)
     .inner_size(p::DRAG_SIZE, p::DRAG_SIZE)
@@ -215,6 +219,7 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
     .data_directory(session.join("controls"))
     .incognito(true)
     .initialization_script(p::script())
+    .initialization_script(crate::localization::script())
     .initialization_script(crate::theme::script(&settings.accent_color))
     .parent(&browser)
     .map_err(|e| e.to_string())?
@@ -390,7 +395,7 @@ fn sync_controls_inner(app: &AppHandle, force_corners: bool) -> Result<(), Strin
             .map_err(|e| e.to_string())?;
             return receive
                 .recv_timeout(std::time::Duration::from_secs(5))
-                .map_err(|_| "同步窗口控制区域超时".to_string())?;
+                .map_err(|_| crate::localization::text("errors.controlsTimeout").to_string())?;
         }
     }
     let Some(controls) = app.get_webview_window("controls") else {
@@ -435,7 +440,7 @@ pub fn open_panel(app: &AppHandle) -> Result<(), String> {
 fn open_panel_inner(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
     if state.busy.load(Ordering::SeqCst) {
-        return Err("正在处理会话，请稍候".into());
+        return Err(crate::localization::text("errors.sessionBusy").into());
     }
     crate::context_menu::dismiss(app)?;
     let already_open = state.panel_open.swap(true, Ordering::SeqCst);
@@ -538,9 +543,9 @@ pub fn toggle(app: &AppHandle) -> Result<(), String> {
 fn update_visibility(app: &AppHandle, visible: bool) {
     if let Some(item) = app.state::<AppState>().toggle_item.lock().unwrap().as_ref() {
         let _ = item.set_text(if visible {
-            "隐藏窗口"
+            crate::localization::menu_text("tray.hide")
         } else {
-            "显示窗口"
+            crate::localization::menu_text("tray.show")
         });
     }
     let _ = app.emit_to("controls", "visibility-changed", visible);
@@ -567,17 +572,23 @@ pub fn set_opacity(app: &AppHandle, opacity: f64) -> Result<(), String> {
         let mut errors = vec![error];
         if let Some(browser) = &browser {
             if let Err(e) = platform::set_opacity(browser, previous) {
-                errors.push(format!("恢复网页不透明度失败：{e}"));
+                errors.push(crate::localization::format(
+                    "errors.opacityRollback",
+                    &[("error", (e).to_string())],
+                ));
             }
         }
         if let Some(controls) = &controls {
             if let Err(e) =
                 platform::set_opacity(controls, if solid_controls { 1. } else { previous })
             {
-                errors.push(format!("恢复控件不透明度失败：{e}"));
+                errors.push(crate::localization::format(
+                    "errors.controlsOpacityRollback",
+                    &[("error", (e).to_string())],
+                ));
             }
         }
-        return Err(errors.join("；"));
+        return Err(errors.join(crate::localization::text("common.separator")));
     }
     *state.effective_opacity.lock().unwrap() = opacity;
     Ok(())
@@ -595,7 +606,7 @@ pub fn apply_window_settings(app: &AppHandle, settings: &Settings) -> Result<(),
 
 pub fn restore(app: &AppHandle) -> Result<(), String> {
     if app.state::<AppState>().busy.load(Ordering::SeqCst) {
-        return Err("正在处理，请稍候".into());
+        return Err(crate::localization::text("errors.busy").into());
     }
     if let Some(browser) = app.get_webview_window("browser") {
         let defaults = Settings::default();

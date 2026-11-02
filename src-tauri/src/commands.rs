@@ -4,7 +4,7 @@ use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
 fn authorize(caller: &WebviewWindow) -> Result<(), String> {
     if caller.label() != "controls" {
-        return Err("此界面没有应用控制权限".into());
+        return Err(crate::localization::text("errors.controlPermission").into());
     }
     let url = caller.url().map_err(|e| e.to_string())?;
     let local = url.scheme() == "tauri"
@@ -13,7 +13,7 @@ fn authorize(caller: &WebviewWindow) -> Result<(), String> {
             && url.host_str() == Some("127.0.0.1")
             && url.port() == Some(1420));
     if !local {
-        return Err("仅允许本地设置界面调用".into());
+        return Err(crate::localization::text("errors.localOnly").into());
     }
     Ok(())
 }
@@ -122,7 +122,7 @@ pub fn preview_opacity(
         let _operation = crate::operation::Guard::begin(app)?;
         crate::operation::validate_preview(app, epoch)?;
         if !(crate::parameters::MIN_OPACITY..=crate::parameters::MAX_OPACITY).contains(&opacity) {
-            return Err("不透明度无效".into());
+            return Err(crate::localization::text("errors.opacity").into());
         }
         crate::test_support::fail("opacity_preview")?;
         windows::set_opacity(app, opacity)

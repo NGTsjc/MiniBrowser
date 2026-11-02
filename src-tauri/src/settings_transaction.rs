@@ -23,7 +23,9 @@ pub fn apply(
     operation::validate_preview(app, epoch)?;
     let state = app.state::<AppState>();
     let old = state.settings.lock().unwrap().clone();
-    let browser = app.get_webview_window("browser").ok_or("浏览窗口已关闭")?;
+    let browser = app
+        .get_webview_window("browser")
+        .ok_or(crate::localization::text("errors.browserClosed"))?;
     (settings.width, settings.height) =
         windows::current_size(app).unwrap_or((old.width, old.height));
     settings.validate()?;
@@ -32,7 +34,7 @@ pub fn apply(
     } else if settings.startup_url.is_empty() {
         Some(
             app.get_webview_window("controls")
-                .ok_or("设置界面已关闭")?
+                .ok_or(crate::localization::text("errors.settingsClosed"))?
                 .url()
                 .map_err(|e| e.to_string())?
                 .join("index.html?view=guide")
@@ -65,19 +67,28 @@ pub fn apply(
     if let Err(error) = before_commit {
         let mut errors = vec![error];
         if let Err(e) = windows::apply_window_settings(app, &old) {
-            errors.push(format!("恢复窗口失败：{e}"));
+            errors.push(crate::localization::format(
+                "errors.windowRollback",
+                &[("error", (e).to_string())],
+            ));
         }
         if let Err(e) = controls_topmost(app, old.always_on_top) {
-            errors.push(format!("恢复置顶失败：{e}"));
+            errors.push(crate::localization::format(
+                "errors.topmostRollback",
+                &[("error", (e).to_string())],
+            ));
         }
         if newly_registered {
             if let Some(key) = new_key {
                 if let Err(e) = app.global_shortcut().unregister(key) {
-                    errors.push(format!("恢复快捷键失败：{e}"));
+                    errors.push(crate::localization::format(
+                        "errors.shortcutRollback",
+                        &[("error", (e).to_string())],
+                    ));
                 }
             }
         }
-        return Err(errors.join("；"));
+        return Err(errors.join(crate::localization::text("common.separator")));
     }
 
     *state.settings.lock().unwrap() = settings.clone();
@@ -88,7 +99,10 @@ pub fn apply(
     if old_key != new_key {
         if let Some(key) = old_key {
             if let Err(e) = app.global_shortcut().unregister(key) {
-                warnings.push(format!("旧快捷键未能注销：{e}"));
+                warnings.push(crate::localization::format(
+                    "errors.shortcutUnregister",
+                    &[("error", (e).to_string())],
+                ));
             }
         }
     }
@@ -101,7 +115,10 @@ pub fn apply(
             .map_err(|e| e.to_string())
     });
     if let Err(error) = media {
-        warnings.push(format!("媒体设置同步失败：{error}"));
+        warnings.push(crate::localization::format(
+            "errors.mediaSync",
+            &[("error", (error).to_string())],
+        ));
     }
     let mut navigation_failed = false;
     if let Some(target) = target {
@@ -109,16 +126,28 @@ pub fn apply(
             .and_then(|_| browser.navigate(target).map_err(|e| e.to_string()));
         if let Err(error) = navigation {
             navigation_failed = true;
-            warnings.push(format!("无法打开新地址，当前网页保留：{error}"));
+            warnings.push(crate::localization::format(
+                "errors.navigateSaved",
+                &[("error", (error).to_string())],
+            ));
         }
     }
     if warnings.is_empty() {
         if let Err(error) = windows::close_panel(app) {
-            warnings.push(format!("设置面板关闭失败：{error}"));
+            warnings.push(crate::localization::format(
+                "errors.panelClose",
+                &[("error", (error).to_string())],
+            ));
         }
     }
     if !warnings.is_empty() {
-        *state.warning.lock().unwrap() = Some(format!("设置已保存；{}", warnings.join("；")));
+        *state.warning.lock().unwrap() = Some(crate::localization::format(
+            "settings.savedWarnings",
+            &[(
+                "warnings",
+                (warnings.join(crate::localization::text("common.separator"))).to_string(),
+            )],
+        ));
     }
     Ok(Outcome {
         settings,

@@ -6,10 +6,34 @@ use tauri::{
 };
 
 pub fn setup(app: &AppHandle) -> tauri::Result<()> {
-    let toggle = MenuItem::with_id(app, "toggle", "隐藏窗口", true, None::<&str>)?;
-    let reset = MenuItem::with_id(app, "reset_window", "重置窗口", true, None::<&str>)?;
-    let close = MenuItem::with_id(app, "close", "关闭", true, None::<&str>)?;
-    let restart = MenuItem::with_id(app, "restart", "重启", true, None::<&str>)?;
+    let toggle = MenuItem::with_id(
+        app,
+        "toggle",
+        crate::localization::menu_text("tray.hide"),
+        true,
+        None::<&str>,
+    )?;
+    let reset = MenuItem::with_id(
+        app,
+        "reset_window",
+        crate::localization::menu_text("tray.reset"),
+        true,
+        None::<&str>,
+    )?;
+    let close = MenuItem::with_id(
+        app,
+        "close",
+        crate::localization::menu_text("menu.close"),
+        true,
+        None::<&str>,
+    )?;
+    let restart = MenuItem::with_id(
+        app,
+        "restart",
+        crate::localization::menu_text("menu.restart"),
+        true,
+        None::<&str>,
+    )?;
     let menu = Menu::with_items(app, &[&toggle, &reset, &close, &restart])?;
     *app.state::<AppState>().toggle_item.lock().unwrap() = Some(toggle);
     TrayIconBuilder::with_id("main-tray")

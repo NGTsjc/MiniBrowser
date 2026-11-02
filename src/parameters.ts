@@ -1,3 +1,4 @@
+import { t } from './i18n';
 import type { Parameters } from './types';
 
 declare global {
@@ -5,7 +6,7 @@ declare global {
 }
 
 const injected = window.__MINIBROWSER_PARAMETERS__;
-if (!injected) throw new Error('应用参数未加载，请重新启动应用');
+if (!injected) throw new Error(t('errors.parameters'));
 export const parameters: Parameters = injected;
 
 export function initializeParameters() {

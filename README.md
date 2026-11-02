@@ -1,5 +1,7 @@
 # MiniBrowser
 
+应用默认使用英文，支持通过 `MiniBrowser.data/settings.json` 的 `languageFile` 指定外部 JSON 覆盖界面及应用提示，修改后重启生效。发布包附带完整中文示例，默认不启用；详见 [自定义文案说明](docs/localization.md)。
+
 Windows 便携式无痕网页小窗，使用 Rust、Tauri 2、WebView2 和 TypeScript 构建。
 
 ## 使用
