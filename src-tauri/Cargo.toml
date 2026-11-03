@@ -1,6 +1,6 @@
 [package]
 name = "minibrowser"
-version = "1.1.0"
+version = "1.1.1"
 description = "Portable private web window"
 edition = "2021"
 rust-version = "1.96"
