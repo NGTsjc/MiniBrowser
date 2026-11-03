@@ -123,7 +123,7 @@ fn rollback(app: &AppHandle, previous: Option<(i32, i32)>, error: String) -> Res
     if let Err(e) = event {
         errors.push(e);
     }
-    Err(errors.join(crate::localization::text("common.separator")))
+    Err(errors.join(&crate::localization::text("common.separator")))
 }
 
 pub fn perform(app: &AppHandle, action: &str) -> Result<(), String> {
@@ -131,14 +131,14 @@ pub fn perform(app: &AppHandle, action: &str) -> Result<(), String> {
         action,
         "settings" | "refresh" | "hide" | "close" | "restore" | "restart" | "devtools"
     ) {
-        return Err(crate::localization::text("errors.menuAction").into());
+        return Err(crate::localization::text("errors.menuAction"));
     }
     if matches!(action, "close" | "restart") {
         lifecycle::exit(app, action == "restart");
         return Ok(());
     }
     if app.state::<AppState>().busy.load(Ordering::SeqCst) {
-        return Err(crate::localization::text("errors.busy").into());
+        return Err(crate::localization::text("errors.busy"));
     }
     dismiss(app)?;
     match action {

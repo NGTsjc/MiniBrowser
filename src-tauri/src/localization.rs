@@ -1,12 +1,21 @@
 use std::{
     collections::{BTreeMap, BTreeSet},
     path::{Component, Path},
-    sync::OnceLock,
+    sync::{OnceLock, RwLock},
 };
 
 pub type Catalog = BTreeMap<String, String>;
 static ENGLISH: OnceLock<Catalog> = OnceLock::new();
-static ACTIVE: OnceLock<Catalog> = OnceLock::new();
+static ACTIVE: OnceLock<RwLock<Catalog>> = OnceLock::new();
+fn active() -> &'static RwLock<Catalog> {
+    ACTIVE.get_or_init(|| RwLock::new(english().clone()))
+}
+pub fn catalog() -> Catalog {
+    active().read().unwrap().clone()
+}
+pub fn activate(catalog: Catalog) {
+    *active().write().unwrap() = catalog;
+}
 
 pub fn english() -> &'static Catalog {
     ENGLISH.get_or_init(|| {
@@ -14,16 +23,16 @@ pub fn english() -> &'static Catalog {
             .expect("valid built-in English catalog")
     })
 }
-pub fn text(key: &str) -> &'static str {
-    ACTIVE
-        .get()
-        .unwrap_or_else(|| english())
+pub fn text(key: &str) -> String {
+    active()
+        .read()
+        .unwrap()
         .get(key)
-        .map(String::as_str)
-        .unwrap_or("[Missing text]")
+        .cloned()
+        .unwrap_or_else(|| "[Missing text]".into())
 }
 pub fn format(key: &str, params: &[(&str, String)]) -> String {
-    render(text(key), params)
+    render(&text(key), params)
 }
 pub fn menu_text(key: &str) -> String {
     // Muda treats '&' as a mnemonic on Windows. Custom labels are plain text.
@@ -125,14 +134,51 @@ pub fn parse(content: &str) -> Result<(Catalog, Vec<String>), String> {
 }
 fn load(root: &Path, file: &str) -> Result<(Catalog, Vec<String>), String> {
     if !valid_relative(file) {
-        return Err(text("errors.localePath").into());
+        return Err(text("errors.localePath"));
     }
     let root = root.canonicalize().map_err(|e| e.to_string())?;
     let path = root.join(file).canonicalize().map_err(|e| e.to_string())?;
     if !path.starts_with(&root) {
-        return Err(text("errors.localeOutside").into());
+        return Err(text("errors.localeOutside"));
     }
     parse(&std::fs::read_to_string(path).map_err(|e| e.to_string())?)
+}
+pub fn prepare(root: &Path, file: Option<&str>) -> Result<(Catalog, Vec<String>), String> {
+    match file.map(str::trim).filter(|s| !s.is_empty()) {
+        Some(file) => load(root, file).map_err(|error| {
+            format(
+                "errors.localeFile",
+                &[("path", file.into()), ("error", error)],
+            )
+        }),
+        None => Ok((english().clone(), Vec::new())),
+    }
+}
+pub fn sync(app: &tauri::AppHandle) -> Vec<String> {
+    use tauri::Manager;
+    let script = format!(
+        "{};window.dispatchEvent(new Event('minibrowser-locale'));",
+        script()
+    );
+    let mut errors = Vec::new();
+    for label in ["controls", "browser"] {
+        if let Some(window) = app.get_webview_window(label) {
+            // Guard the whole update: remote documents must not receive events or data.
+            let guarded = format!("(()=>{{const u=new URL(location.href);if(window.top!==window||!((u.protocol==='tauri:'||u.origin==='http://tauri.localhost'||({}&&u.origin==='http://127.0.0.1:1420'))&&(u.pathname==='/'||u.pathname==='/index.html')))return;{script}}})()", cfg!(debug_assertions));
+            if let Err(error) = window.eval(guarded) {
+                errors.push(error.to_string());
+            }
+        }
+    }
+    if let Some(window) = app.get_webview_window("controls") {
+        if let Err(error) = window.set_title(&text("window.controlsTitle")) {
+            errors.push(error.to_string());
+        }
+    }
+    if let Err(error) = crate::tray::translate(app) {
+        errors.push(error.to_string());
+    }
+    errors
 }
 pub fn init(root: &Path, file: Option<&str>) -> Option<String> {
     let file = file.map(str::trim).filter(|s| !s.is_empty());
@@ -141,7 +187,7 @@ pub fn init(root: &Path, file: Option<&str>) -> Option<String> {
         Some(Err(error)) => (english().clone(), Vec::new(), Some(error)),
         None => (english().clone(), Vec::new(), None),
     };
-    let _ = ACTIVE.set(catalog);
+    activate(catalog);
     if let Some(error) = failure {
         Some(format(
             "errors.localeFile",
@@ -159,10 +205,7 @@ pub fn init(root: &Path, file: Option<&str>) -> Option<String> {
 pub fn script() -> String {
     // AddScriptToExecuteOnDocumentCreated executes JS, not HTML. JSON encoding
     // quotes every value; the guard never publishes it to remote pages/frames.
-    crate::parameters::local_script(
-        "__MINIBROWSER_LOCALE__",
-        &serde_json::json!(ACTIVE.get().unwrap_or_else(|| english())),
-    )
+    crate::parameters::local_script("__MINIBROWSER_LOCALE__", &serde_json::json!(catalog()))
 }
 
 #[cfg(test)]

@@ -24,7 +24,7 @@ pub fn new_page(app: &AppHandle, source_session: &Path, target: &url::Url) {
         return;
     }
     if !matches!(target.scheme(), "http" | "https") || target.host_str().is_none() {
-        windows::notify(app, crate::localization::text("errors.newPageUnsupported"));
+        windows::notify(app, &crate::localization::text("errors.newPageUnsupported"));
         return;
     }
     let handle = app.clone();

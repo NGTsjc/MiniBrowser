@@ -119,5 +119,24 @@ fn files_stay_in_portable_tree_and_fail_safely() {
         std::fs::write(&file, bytes).unwrap();
         assert!(load(&dir, "locales/custom.json").is_err());
     }
+    assert_eq!(prepare(&dir, None).unwrap().0, *english());
+    std::fs::write(&file, r#"{"menu.refresh":"Reload now"}"#).unwrap();
+    let candidate = prepare(&dir, Some("locales/custom.json")).unwrap().0;
+    std::fs::write(&file, "{}").unwrap();
+    assert_eq!(candidate["menu.refresh"], "Reload now");
+    assert_eq!(
+        prepare(&dir, Some("locales/custom.json")).unwrap().0,
+        *english()
+    );
+    assert_eq!(
+        crate::language_picker::relative(&dir, &file).unwrap(),
+        "locales/custom.json"
+    );
+    std::fs::write(&file, "[]").unwrap();
+    assert!(prepare(&dir, Some("locales/custom.json")).is_err());
+    assert!(prepare(&dir, Some("missing.json")).is_err());
+    assert!(
+        crate::language_picker::relative(&dir.join("locales"), &dir.join("not-json.txt")).is_err()
+    );
     std::fs::remove_dir_all(dir).unwrap();
 }

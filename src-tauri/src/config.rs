@@ -57,7 +57,7 @@ pub fn normalize_url(input: &str) -> Result<String, String> {
         || !url.username().is_empty()
         || url.password().is_some()
     {
-        return Err(crate::localization::text("errors.urlScheme").into());
+        return Err(crate::localization::text("errors.urlScheme"));
     }
     Ok(url.to_string())
 }
@@ -71,7 +71,7 @@ impl Settings {
             ));
         }
         if !valid_accent(&self.accent_color) {
-            return Err(crate::localization::text("errors.color").into());
+            return Err(crate::localization::text("errors.color"));
         }
         self.accent_color.make_ascii_uppercase();
         self.version = p::CONFIG_VERSION;
@@ -90,7 +90,7 @@ impl Settings {
             || !(p::MIN_WIDTH..=p::MAX_SIZE).contains(&self.width)
             || !(p::MIN_HEIGHT..=p::MAX_SIZE).contains(&self.height)
         {
-            return Err(crate::localization::text("errors.size").into());
+            return Err(crate::localization::text("errors.size"));
         }
         self.shortcut = self
             .shortcut
@@ -107,7 +107,7 @@ impl Settings {
             .as_deref()
             .is_some_and(|s| !crate::localization::valid_relative(s))
         {
-            return Err(crate::localization::text("errors.localePath").into());
+            return Err(crate::localization::text("errors.localePath"));
         }
         Ok(())
     }
@@ -328,7 +328,7 @@ fn atomic_replace(from: &Path, to: &Path) -> Result<(), String> {
         },
     };
     if fs::metadata(to).is_ok_and(|m| m.permissions().readonly()) {
-        return Err(crate::localization::text("errors.readOnly").into());
+        return Err(crate::localization::text("errors.readOnly"));
     }
     let from: Vec<u16> = from.as_os_str().encode_wide().chain(Some(0)).collect();
     let to: Vec<u16> = to.as_os_str().encode_wide().chain(Some(0)).collect();

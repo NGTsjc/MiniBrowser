@@ -33,6 +33,7 @@ pub struct AppState {
     pub size_save_scheduled: AtomicBool,
     #[cfg(debug_assertions)]
     pub debug_generation: AtomicU64,
+    pub tray_items: Mutex<Vec<MenuItem<tauri::Wry>>>,
     pub toggle_item: Mutex<Option<MenuItem<tauri::Wry>>>,
 }
 
@@ -69,6 +70,7 @@ impl AppState {
             size_save_scheduled: AtomicBool::new(false),
             #[cfg(debug_assertions)]
             debug_generation: AtomicU64::new(0),
+            tray_items: Mutex::new(Vec::new()),
             toggle_item: Mutex::new(None),
         }
     }

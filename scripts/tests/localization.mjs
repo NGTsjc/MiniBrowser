@@ -3,6 +3,7 @@ import {spawn,execFile} from 'node:child_process';
 import {promisify} from 'node:util';
 import {mkdir,copyFile,writeFile,readFile,rmdir,symlink} from 'node:fs/promises';
 import path from 'node:path';
+import {createServer} from 'node:http';
 import {CDP} from './cdp.mjs';
 
 const root=path.resolve('.cache/localization-checks',String(Date.now()));
@@ -30,6 +31,7 @@ const set=(id,value)=>controls.evaluate(`(()=>{const e=document.getElementById($
 async function screenshot(name){const s=await controls.send('Page.captureScreenshot',{format:'png'});await writeFile(path.join(current,name),Buffer.from(s.data,'base64'));}
 function pass(message){passed.push(message);console.log('PASS',message);}
 try{
+  if(!process.argv.includes('--picker-only')) {
   await start('chinese',{content:'\uFEFF'+JSON.stringify(chinese)});await open();
   assert.equal(await controls.evaluate(`document.documentElement.lang`),'zh-CN');
   assert.equal(await controls.evaluate(`document.querySelector('#panel h1').textContent`),'窗口设置');
@@ -58,15 +60,106 @@ try{
   await open();await screenshot('chinese.png');pass('Chinese covers settings, guide, context/tray menus, validation, save failures and saved warnings; languageFile survives size/settings writes');
   await writeFile(path.join(current,'MiniBrowser.data/locale.json'),JSON.stringify({'settings.title':'Reloaded title'}));
   await open();assert.equal(await controls.evaluate(`document.querySelector('#panel h1').textContent`),'窗口设置');
+  await controls.evaluate(`document.getElementById('settings-form').requestSubmit()`);
+  await until(()=>controls.evaluate(`document.querySelector('#panel h1').textContent==='Reloaded title'`));
+  await until(()=>browser.evaluate(`document.querySelector('.welcome h1').textContent===${JSON.stringify(english['guide.title'])}`));
+  assert.equal(await controls.evaluate(`document.documentElement.lang`),'en');
+  await open();
+  assert.equal(await controls.evaluate(`document.getElementById('language-file').value`),'locale.json');
+  await writeFile(path.join(current,'MiniBrowser.data/locale.json'),JSON.stringify({'settings.title':'Restarted title'}));
   console.log('Checking locale after session rebuild');
   await controls.evaluate(`setTimeout(()=>window.__TAURI_INTERNALS__.invoke('clear_session'),100);true`);controls.close();browser.close();await connect(9225);await open();
-  assert.equal(await controls.evaluate(`document.querySelector('#panel h1').textContent`),'窗口设置');
+  assert.equal(await controls.evaluate(`document.querySelector('#panel h1').textContent`),'Reloaded title');
   console.log('Checking locale after process restart');
   await stop();await launch(path.join(current,'MiniBrowser.exe'));await open();
-  assert.equal(await controls.evaluate(`document.querySelector('#panel h1').textContent`),'Reloaded title');
+  assert.equal(await controls.evaluate(`document.querySelector('#panel h1').textContent`),'Restarted title');
   assert.equal(await controls.evaluate(`document.getElementById('confirm').textContent`),'Confirm');
   assert.equal(await controls.evaluate(`document.documentElement.lang`),'en');
-  pass('language changes require process restart, not settings confirmation or session rebuilding');await stop();
+  pass('confirmation reloads the same path immediately; session rebuilding retains active text and restart reads updated file');await stop();
+
+  }
+  await start('live-settings',{file:null});await open();
+  const data=path.join(current,'MiniBrowser.data');
+  await writeFile(path.join(data,'chinese.json'),JSON.stringify(chinese));
+  const original=(await controls.invoke('get_settings')).settings;
+  async function picker(selectedPath, cancel=false) {
+    await controls.evaluate(`document.getElementById('browse-language').click();true`);
+    await execute('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.resolve('scripts/tests/language-picker.ps1'),'-AppProcessId',String(child.pid),...(cancel?['-Cancel']:['-SelectedPath',selectedPath])],{windowsHide:true,encoding:'utf8'});
+    await until(()=>controls.evaluate(`!document.getElementById('browse-language').disabled`));
+  }
+  await picker(path.join(data,'chinese.json'));
+  assert.equal(await controls.evaluate(`document.getElementById('language-file').value`),'chinese.json');
+  assert.equal(await controls.evaluate(`document.documentElement.lang`),'en');
+  await picker('',true);
+  assert.equal(await controls.evaluate(`document.getElementById('language-file').value`),'chinese.json');
+  const outsideFile=path.join(current,'outside.json');await writeFile(outsideFile,'{}');
+  await picker(outsideFile);
+  assert.equal(await controls.evaluate(`document.getElementById('language-file').value`),'chinese.json');
+  assert.match(await controls.evaluate(`document.getElementById('notice').textContent`),/outside MiniBrowser.data/);
+  pass('native file picker selects relative paths, cancellation keeps draft and outside files are rejected');
+
+  for(const bad of ['missing.json','../outside.json',path.join(data,'chinese.json')]) {
+    await set('language-file',bad);await set('url','https://retained.example/');
+    await controls.evaluate(`document.getElementById('settings-form').requestSubmit()`);
+    await until(()=>controls.evaluate(`!document.getElementById('confirm').disabled && !document.getElementById('notice').hidden`));
+    assert.equal(await controls.evaluate(`document.documentElement.lang`),'en');
+    assert.equal(await controls.evaluate(`document.getElementById('language-file').value`),bad);
+    assert.equal((await controls.invoke('get_settings')).settings.languageFile,null);
+  }
+  await writeFile(path.join(data,'broken.json'),'[]');
+  await assert.rejects(controls.invoke('apply_settings',{settings:{...original,languageFile:'broken.json'},urlEdited:false}));
+  await set('language-file','chinese.json');await set('url','');
+  await mkdir(path.join(data,'settings.json.tmp'));
+  await controls.evaluate(`document.getElementById('settings-form').requestSubmit()`);
+  await until(()=>controls.evaluate(`!document.getElementById('confirm').disabled && document.getElementById('notice').textContent.includes('save')`));
+  assert.equal(await controls.evaluate(`document.documentElement.lang`),'en');
+  assert.equal(await controls.evaluate(`document.getElementById('language-file').value`),'chinese.json');
+  await rmdir(path.join(data,'settings.json.tmp'));
+  await controls.evaluate(`document.getElementById('settings-form').requestSubmit()`);
+  await until(()=>controls.evaluate(`document.documentElement.lang==='zh-CN'`));
+  await until(()=>browser.evaluate(`document.documentElement.lang==='zh-CN'`));
+  await browser.send('Page.reload');await until(()=>browser.evaluate(`!!document.querySelector('.welcome h1') && document.documentElement.lang==='zh-CN'`));
+  await open();assert.equal(await controls.evaluate(`document.getElementById('browse-language').textContent`),chinese['settings.languageBrowse']);
+  await controls.invoke('show_context_menu');
+  assert.equal(await controls.evaluate(`document.querySelector('[data-action=refresh] .menu-label').textContent`),chinese['menu.refresh']);
+  await controls.invoke('dismiss_context_menu');
+  await native('openTrayMenu');assert.deepEqual((await native()).menuItems,['隐藏窗口','重置窗口','关闭','重启']);await native('dismissMenu');
+  await set('language-file','');await controls.invoke('cancel_settings');await open();
+  assert.equal(await controls.evaluate(`document.getElementById('language-file').value`),'chinese.json');
+  await set('language-file','');await controls.evaluate(`document.getElementById('settings-form').requestSubmit()`);
+  await until(()=>controls.evaluate(`document.documentElement.lang==='en'`));
+  assert.equal((await controls.invoke('get_settings')).settings.languageFile,null);
+  await browser.send('Page.reload');await until(()=>browser.evaluate(`!!document.querySelector('.welcome h1') && document.documentElement.lang==='en'`));
+  await assert.rejects(browser.invoke('choose_language_file'),/not allowed|permission|control/i);
+  await open();await writeFile(path.join(data,'partial.json'),JSON.stringify({'settings.title':'Partial <text>','guide.title':'Live guide <text>','menu.refresh':13}));
+  await set('language-file','partial.json');
+  await controls.evaluate(`document.getElementById('settings-form').requestSubmit()`);
+  await until(()=>controls.evaluate(`!document.getElementById('confirm').disabled && document.getElementById('notice').textContent.includes('Settings saved')`));
+  assert.equal(await controls.evaluate(`document.getElementById('panel').hidden`),false);
+  assert.equal(await controls.evaluate(`document.querySelector('#panel h1').textContent`),'Partial <text>');
+  assert.match(await controls.evaluate(`document.getElementById('notice').textContent`),/menu.refresh/);
+  await controls.invoke('cancel_settings');await open();
+  assert.equal(await controls.evaluate(`document.getElementById('language-file').value`),'partial.json');
+  await sleep(120);await controls.evaluate(`document.getElementById('language-file').scrollIntoView({block:'center'});true`);await sleep(100);
+  await screenshot('language-settings.png');
+  const server=createServer((request,response)=>{response.setHeader('Content-Type','text/html');response.end('<!doctype html><body>remote locale permission probe</body>')});
+  await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(18768,'127.0.0.1',resolve)});
+  try {
+    await browser.send('Page.navigate',{url:'http://127.0.0.1:18768/'});
+    await until(()=>browser.evaluate(`document.body.textContent.includes('remote locale permission probe')`));
+    for(const command of ['get_locale','choose_language_file']) {
+      assert.equal(await browser.evaluate(`window.__TAURI_INTERNALS__.invoke(${JSON.stringify(command)}).then(()=>false,()=>true)`),true);
+    }
+    assert.equal(await browser.evaluate(`typeof window.__MINIBROWSER_LOCALE__`),'undefined');
+    await browser.send('Page.navigate',{url:'http://tauri.localhost/index.html?view=guide'});
+    await until(()=>browser.evaluate(`!!document.querySelector('.welcome h1')`));
+    assert.equal(await browser.evaluate(`document.documentElement.lang`),'en');
+    assert.equal(await browser.evaluate(`document.querySelector('.welcome h1').textContent`),'Live guide <text>');
+  } finally { await new Promise(resolve=>server.close(resolve)); }
+
+
+  pass('settings path validation, failed save, cancellation, immediate Chinese/English, guide reload and menus preserve transaction semantics');await stop();
+  if(process.argv.includes('--picker-only')) { await writeFile(path.join(root,'report.json'),JSON.stringify({passed},null,2));process.exit(0); }
 
   const injected='<img src=x onerror="window.__localeXss=1"> & \'text\'';
   const hint='" onpointerdown="window.__localeXss=1';
@@ -100,5 +193,5 @@ try{
   assert.equal(await controls.evaluate(`document.querySelector('#panel h1').textContent`),'Window Settings');
   assert.match((await controls.invoke('get_settings')).warning,/outside MiniBrowser.data/);pass('canonical path checking rejects a junction escaping the portable data tree');await stop();
   await writeFile(path.join(root,'report.json'),JSON.stringify({passed},null,2));console.log('Artifacts:',root);
-}catch(error){try{await screenshot('failure.png')}catch{}console.error('Failure artifacts:',current);throw error}
+}catch(error){console.error('Original failure:',error);try{await execute('powershell.exe',['-NoProfile','-ExecutionPolicy','Bypass','-File',path.resolve('scripts/tests/language-picker.ps1'),'-AppProcessId',String(child.pid),'-Cancel'],{windowsHide:true,encoding:'utf8'});}catch{}try{console.error('Browser body:',await browser.evaluate('document.body.textContent'));await screenshot('failure.png')}catch{}console.error('Failure artifacts:',current);throw error}
 finally{if(child?.exitCode===null)await stop()}

@@ -133,7 +133,7 @@
   "errors.zoomRestore": "无法恢复网页缩放：{error}",
   "settings.savedWarnings": "设置已保存；{warnings}",
   "common.separator": "；",
-  "errors.localeFile": "无法从 {path} 加载自定义文案，已使用英文。{error}",
+  "errors.localeFile": "无法加载 {path} 的自定义文案：{error}",
   "errors.localeFields": "部分自定义文案无效，已使用英文默认值：{keys}",
   "window.controlsTitle": "MiniBrowser 设置",
   "errors.localePath": "语言文件必须使用 MiniBrowser.data 目录内的相对路径",
@@ -144,5 +144,12 @@
   "positions.topRight": "右上角",
   "positions.bottomLeft": "左下角",
   "positions.bottomRight": "右下角",
-  "errors.dragRollback": "{error}；恢复窗口控制区域失败：{rollback}"
+  "errors.dragRollback": "{error}；恢复窗口控制区域失败：{rollback}",
+  "settings.languageFile": "语言文件",
+  "settings.languagePlaceholder": "locale.json（可选）",
+  "settings.languageHint": "相对于 MiniBrowser.data。留空使用英文，确认保存后立即切换。",
+  "settings.languageBrowse": "浏览…",
+  "settings.languageBrowseTitle": "选择 MiniBrowser.data 内的语言 JSON",
+  "errors.localeSelection": "请选择 MiniBrowser.data 内的 JSON 文件。",
+  "errors.localePickerUnsupported": "此平台暂不支持文件选择，请输入相对路径。"
 }

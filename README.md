@@ -1,90 +1,42 @@
 # MiniBrowser
 
-应用默认使用英文，支持通过 `MiniBrowser.data/settings.json` 的 `languageFile` 指定外部 JSON 覆盖界面及应用提示，修改后重启生效。发布包附带完整中文示例，默认不启用；详见 [自定义文案说明](docs/localization.md)。
+**English** | [简体中文](README.zh-CN.md)
 
-Windows 便携式无痕网页小窗，使用 Rust、Tauri 2、WebView2 和 TypeScript 构建。
+A small, portable browser window for keeping a webpage close at hand. Open a dashboard, a video, or a reference page in a window that fits your desktop.
 
-## 使用
+## Features
 
-双击 `MiniBrowser.exe` 启动。右键本地引导页或拖动区，在菜单中选择“设置”打开填满窗口的设置面板；按住拖动区即可立即移动窗口，拖动窗口边缘调整尺寸。每次启动在鼠标所在屏幕居中，尺寸和设置会保存，位置不保存。默认引导页隐藏滚动条，仍可使用滚轮滚动。
+- **A window that fits:** resize freely, pin it on top, and adjust opacity, rounded corners, accent color, and drag handle position.
+- **Private sessions:** keep your login while browsing; closing or restarting the app starts fresh next time.
+- **Easy to tuck away:** show or hide from the tray or with your own shortcut. Media pauses when hidden by default.
+- **Simple browsing:** new-page links open in the same window. Use Ctrl + mouse wheel to zoom.
+- **Portable:** no app installation. Settings and temporary browsing data stay beside the EXE.
+- **Custom text:** choose a language JSON in Settings to change the interface immediately. A complete Chinese example is included.
 
-- 只运行一个实例，重复启动唤回已有窗口，不重置网页。
-- 默认不显示任务栏图标；右键托盘可显示／隐藏、重置窗口、关闭、重启，左键显示窗口。
-- 托盘“重置窗口”将窗口恢复为 960×600 并在当前显示器工作区居中，小屏幕自动适配；隐藏的窗口会显示并激活。重置会保存尺寸，保留网页、登录状态、透明度、主题和未确认的设置草稿。
-- 设置提供地址、置顶、不透明度、窗口圆角、主题色、全局快捷键、隐藏时暂停媒体。取消或 Esc 放弃草稿，确认后保存；不透明度和窗口圆角支持可撤销预览。
-- “拖动区位置”提供左上、右上、左下、右下四个选项，默认左上角；切换实时预览，确认保存，取消或 Esc 恢复已保存位置。小方块和大圆角圆弧拖动条均随角落镜像，设置打开时仍可拖动，底部位置会避让确认／取消按钮。配置字段为 `dragPosition`，取值 `topLeft`、`topRight`、`bottomLeft`、`bottomRight`；旧配置缺失或字段非法时仅该字段回退默认值。隐藏／显示、托盘重置、清空会话和重启均保留已保存的位置，托盘重置也保留本次未确认的位置预览。
-- 设置保存成功后，如果后续原生导航、媒体同步等操作失败，面板会明确提示“设置已保存”和具体原因，保留当前输入供重试；此时取消不会撤销刚保存的设置。保存本身失败时恢复旧设置并保留草稿。
-- “窗口圆角”可调 0～256 个逻辑像素，默认 0（直角），实际显示不超过窗口短边的一半；保留设置值，放大窗口后可恢复。小于 64 时使用 36×36 正方形拖动块，直接贴住左上角，允许被窗口圆角部分裁剪，拖动纹理保持在可见区域，达到 64 时改为贴合左上圆弧的拖动条，均完整位于窗口可见区域。弧条包围盒中的空白处不拦截鼠标；设置面板自适应填满窗口，内容按圆角保留安全内边距并可滚动；拖动区固定在设置面板上方，打开设置后仍可直接拖动窗口，右键菜单保持独立圆角。支持圆弧边缘的四角缩放，重启、清空会话和托盘重置后保留设置；托盘重置也保留未确认预览。原生区域裁剪的边缘平滑程度与系统合成圆角可能不同。
-- 界面采用浅白色，默认蓝色强调色 `#2563EB`。主题色支持颜色选择器、`#RRGGBB` 输入、八种预设和恢复默认；在设置面板中预览，确认后同步至工具区、右键菜单和本地引导页，并保存到便携配置。取消不改变已保存颜色；网页本身配色不受影响。
-- 浏览模式下拖动区与网页同步不透明度；打开设置时，设置面板及其上方拖动区保持清晰。隐藏／显示后仍恢复相同透明度。
-- 本地引导页和悬浮拖动区的右键菜单提供设置、刷新、隐藏、关闭、恢复窗口（位置与尺寸）、重启、开发者工具；远程网页右键保留网站自定义菜单或 WebView2 默认菜单，设置输入框保留文字编辑菜单。
-- “开发者工具”打开当前网页的独立调试窗口，可使用 Console、Elements 和 Network。便携发布版同样支持；关闭调试窗口不关闭网页，重复点击会唤回已有工具窗口。
-- 右键菜单采用与设置一致的浅色紧凑布局，配有图标、操作分组、已绑定的显隐快捷键提示和红色关闭项；刷新项不标注 F5。支持方向键选择、Enter 执行、Esc／点击外部关闭，并自动避开屏幕边缘；打开菜单不会丢失设置草稿。系统托盘菜单保持系统样式。
-- “恢复窗口”将尺寸恢复为默认 960×600，并在当前显示器工作区居中，不清理会话或修改其他设置。
-- 拖动过程中保持自由跟随；松开鼠标后，越界窗口自动回到显示器工作区内，避开任务栏。可跨相邻显示器摆放，显示器间空隙不视为安全桌面，窗口过大时适配可用空间。
-- 启动地址为上次在设置中确认的地址，页面自身跳转不会自动保存。修改地址保留当前登录状态。
-- 网页请求新标签页／新窗口时，有效 HTTP／HTTPS 地址直接在当前窗口加载。支持 `_blank` 链接、Ctrl／中键打开链接、带地址的 `window.open()`、命名窗口和 iframe 新页面请求；正常跳转不弹提示。网页内部选项卡及 iframe 自身导航保持原行为。
-- 网页区域支持 Ctrl＋滚轮、Ctrl＋加号／减号缩放，Ctrl＋0 恢复 100%，档位和范围沿用 WebView2；普通滚轮继续滚动。设置、菜单、拖动区及窗口几何不随页面缩放。各网站在本次会话内分别记忆比例，刷新、导航、隐藏和托盘重置保留；关闭、重启或清空缓存后恢复默认，不写入应用配置。
-- 隐藏默认暂停常规音视频，显示后不主动恢复。关闭该开关可继续后台播放。
-- “清空缓存”会清空整个浏览会话，包括 Cookie 和网站存储，退出登录后重新加载当前地址，不清除应用设置。
-- 关闭、Alt+F4 和托盘关闭均清理会话并退出。重启清理后重新读取配置，不保留未确认草稿。
+## Get started
 
-## 便携目录
+Requires **Windows 10/11 x64** and an installed **Microsoft Edge WebView2 Runtime**.
 
-```text
-MiniBrowser.exe
-MiniBrowser.data/
-  settings.json
-  sessions/<临时会话>/
-```
+1. Download the portable package from [Releases](https://github.com/NGTsjc/MiniBrowser/releases) and extract it into a writable folder.
+2. Run `MiniBrowser.exe`.
+3. Right-click the start page or the corner drag handle, choose **Settings**, and enter a URL.
 
-应用管理的配置和所有 WebView 数据均放在实际 EXE 旁的 `MiniBrowser.data` 中，不依赖启动时的工作目录。目录不可写时提示退出，不回退到 AppData。请复制整个目录以携带偏好设置，或仅复制 EXE 使用默认配置。
+Hold the drag handle to move the window; drag an edge to resize it. The tray menu lets you show, hide, reset, restart, or close the app. By default, there is no taskbar button.
 
-配置缺失或字段无效时使用默认值；损坏或不兼容的配置在确认设置前不会被自动覆盖。设置默认尺寸为横屏 960×600、最小尺寸 80×40、不置顶、100% 不透明度、未绑定快捷键、隐藏暂停媒体开启、启动地址为空。已有配置中的窗口尺寸继续优先使用。
+To use Chinese, copy `locale.example.json` into `MiniBrowser.data`, choose it under **Settings → Language file**, and confirm. Leave the field blank to restore English.
 
-会话退出时销毁并尝试删除，文件仍被系统占用时延后至下次启动清理，旧会话不会复用。应用设置与启动 URL 会持久保存；浏览历史和登录状态不保存。系统 WebView2 安装及操作系统自身记录不属于应用数据目录。
+## Your settings and privacy
 
-## 开发与构建
+Settings are saved in `MiniBrowser.data` beside the EXE. Move that folder with the EXE to keep your preferences.
 
-需要 Windows 10/11 x64、Rust 1.96+、Visual Studio C++ Build Tools（含 Windows SDK）、Node.js 22.12+、pnpm 10，以及系统 WebView2 Runtime。程序会检查 WebView2 是否支持无痕模式；缺失或过旧时提示安装／更新，不自动安装。
+Hiding keeps the current session. **Clear session** removes cookies and site storage and reloads the page; closing discards the session. Files still in use are cleaned up on a later launch. This does not remove records maintained by Windows or WebView2 itself.
 
-```powershell
-pnpm install --frozen-lockfile
-pnpm dev
+MiniBrowser runs one window at a time. Downloads, camera, microphone, location access, and separate login popups are currently unsupported. macOS support is not yet available.
 
-# 类型检查、后端测试
-pnpm check
-pnpm test:native
+## Further reading
 
-# 构建便携版本：release/MiniBrowser.exe
-pnpm build
+The following guides are currently in Chinese:
 
-# 真实 WebView2 集成测试（会在桌面短暂打开测试窗口）
-pnpm build:debug
-pnpm test:smoke
-
-# 发布版原生启动、透明度恢复和关闭检查
-pnpm test:release
-```
-
-生产版本嵌入前端资源，无需 Node.js 或本地服务，依赖系统 WebView2；没有运行环境时不会偷偷下载。发布产物只需携带 EXE，首次启动自动创建数据目录。调试集成测试仅在 `.cache/smoke-portable` 下创建隔离副本；CDP 端口只在调试构建显式设置 `MINIBROWSER_TEST_CDP` 时启用，发布版本没有该入口。
-
-应用与托盘共用 `src-tauri/icons/icon.ico`，包含 16／24／32／48／64／256 像素版本并嵌入 EXE，无需旁置图标文件。设计源图为 `assets/branding/minibrowser-logo-personal.png`。
-
-GitHub 自动构建：推送 `main`、提交 PR 或手动运行 **Check and Build** 后，可在 Actions 下载 Windows x64 EXE；推送 `v*` 标签则自动创建 Release，提供 EXE、便携 ZIP 和 SHA256。发布前可用 `pnpm version:set 0.2.0` 同步应用版本，再提交、创建 `v0.2.0` 标签并执行 `git push origin main v0.2.0`。仓库仅使用 GitHub 的 `origin`，详细步骤见 [开发维护速查](docs/development.md#github-自动构建与发布)。
-
-调试集成测试使用独立实例标识，可与正式窗口并行运行。构建时如果旧 EXE 正在运行，会将旧文件保留为同目录的 `MiniBrowser.previous-<时间戳>.exe`，再放入新版，不关闭当前网页会话；关闭旧窗口后重新运行 `MiniBrowser.exe` 生效。
-
-## 实现与首版边界
-
-Rust 负责便携配置、浏览会话、托盘、快捷键和退出流程；网页和本地控制浮层分别承载。远程网页没有应用控制权限，前端确认设置还会经过后端校验。平台相关能力集中在平台模块；macOS 窗口效果和媒体原生适配尚未实现。
-
-Windows 页面缩放使用 WebView2 原生手势与控制器，本地控制 WebView 禁用缩放快捷键。实测原生用户缩放会在导航时复位，因此额外使用仅限当前会话的内存记录，按来源（协议、主机、有效端口）恢复比例，不合并不同域名或端口；Ctrl＋0 同时清除当前来源记录。不注入缩放脚本、不增加远程权限或全局鼠标钩子。网站自定义滚轮手势仍由内核处理，macOS 暂不增加缩放适配。
-
-只允许 HTTP/HTTPS，普通新页面转到当前窗口；不支持下载、外部协议、摄像头、麦克风、定位和独立登录弹窗。特殊播放器或 Web Audio 在隐藏时可能继续计时，使用原生静音兜底，不承诺冻结整个网页。隐藏不等于关闭，也不清除登录状态。
-
-只处理 WebView2 实际发出的新页面请求，不绕过弹窗限制。拒绝空白窗口、`file:`、`data:`、`blob:` 等目标；不模拟 `window.opener`、独立窗口句柄或先开空白再赋值／`document.write()` 的流程。按 URL 导航的新页面转换不承诺兼容携带 POST 请求体的新窗口表单。没有目标地址的窗口聚焦或标签切换不会产生导航。
-
-应用默认值、配置版本、数值范围、窗口及浮层尺寸集中在 `src-tauri/src/parameters.rs`；修改后重新构建即可同步到后端校验、前端滑条、默认主题与原生窗口布局。前端通过可信本地初始化参数和设置快照读取，不自行维护第二份默认值；普通 CSS 字体和间距仍在样式文件中。已有有效配置优先于新默认值。
-
-常用命令与维护位置见 [开发维护速查](docs/development.md)，进一步的人工验收步骤见 [docs/verification.md](docs/verification.md)。
+- [Custom language files](docs/localization.md)
+- [Development and build commands](docs/development.md)
+- [Testing and verification](docs/verification.md)

@@ -3,6 +3,8 @@ fn main() {
     tauri_build::try_build(tauri_build::Attributes::new().app_manifest(
         tauri_build::AppManifest::new().commands(&[
             "get_settings",
+            "get_locale",
+            "choose_language_file",
             "apply_settings",
             "preview_opacity",
             "preview_corner_radius",

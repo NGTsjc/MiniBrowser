@@ -1,0 +1,1 @@
+{"identifier":"local-locale","description":"Only local embedded pages may read the active dictionary.","local":true,"webviews":["browser"],"permissions":["allow-get-locale"]}

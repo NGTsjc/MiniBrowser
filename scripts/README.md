@@ -2,7 +2,7 @@
 
 所有命令均在仓库根目录执行，优先使用 `pnpm`；PowerShell 拦截 `pnpm.ps1` 时使用 `pnpm.cmd`。
 
-当前共 20 个脚本：构建／版本工具 2 个、测试入口 7 个、单元测试 3 个、集成测试子模块 4 个、底层工具 3 个、早期图标工具 1 个。通常只运行 `package.json` 中的命令，子模块由入口自动调用。
+当前共 21 个脚本：构建／版本工具 2 个、测试入口 7 个、单元测试 3 个、集成测试子模块 4 个、底层工具 4 个、早期图标工具 1 个。通常只运行 `package.json` 中的命令，子模块由入口自动调用。
 
 ```text
 scripts/
@@ -28,7 +28,7 @@ scripts/
 | --- | --- | --- |
 | `smoke.mjs` | `pnpm test:smoke` | 完整桌面集成回归：设置、主题、拖动、缩放、圆角、透明度、菜单、托盘、快捷键、媒体、网站缩放、新页面拦截、单实例及会话清理；先 `pnpm build:debug` |
 | `maintenance.mjs` | `pnpm test:maintenance` | 故障与竞争专项：保存前／后失败、草稿保护、预览失效、原生操作回滚、尺寸保存交错、重建期间关闭／重启、不可恢复错误退出；先 `pnpm build:debug` |
-| `localization.mjs` | `pnpm test:localization` | 英文回退、中文覆盖、重启／会话重建、文案转义、极小窗口和目录联接越界检查；先 `pnpm build:debug` |
+| `localization.mjs` | `pnpm test:localization` | 英文回退、中文覆盖、原生文件选择、即时切换／同路径重载、事务失败、重启／会话重建、文案转义及便携路径检查；先 `pnpm build:debug` |
 | `drag-position.mjs` | `pnpm test:drag-position` | 四角方块／圆弧的实际区域、拖动和菜单，预览取消／确认／保存失败，极小窗口按钮、重启及会话重建持久化；先 `pnpm build:debug` |
 | `appearance.mjs` | `pnpm test:appearance` | 自绘下拉列表、键盘及主题预览、小窗口避让；强制原生样式重写、连续显隐／置顶期间的样式采样、边缘缩放及 Alt+F4；先 `pnpm build:debug` |
 | `release-smoke.mjs` | `pnpm test:release` | 对实际打包 EXE 检查首显、70% 不透明度、任务栏样式、快捷键显隐、EXE 相对路径存储与正常关闭；先 `pnpm build` |
@@ -41,6 +41,8 @@ pnpm test:performance src-tauri/target/debug/MiniBrowser.exe current 3
 ```
 
 性能采样不是功能测试，也没有自动判定“无退步”的阈值，需要结合相同环境下的基线与测量波动判断。
+
+`language-picker.ps1` 是语言专项的原生文件选择器辅助探针，通过 UI Automation 和 Win32 消息只操作指定隔离进程的文件对话框，不单独运行。
 
 ## Node.js 单元测试
 

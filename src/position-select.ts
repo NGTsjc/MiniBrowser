@@ -41,6 +41,7 @@ export function bindPositionSelect(select: HTMLSelectElement, panel: HTMLElement
     typed = ''; if (focus && !select.disabled) trigger.focus({preventScroll: true});
   }
   function sync() {
+    options.forEach((row, i) => { row.firstElementChild!.textContent = select.options[i].text; row.title = select.options[i].text; });
     value.textContent = select.selectedOptions[0]?.textContent ?? ''; trigger.title = value.textContent;
     trigger.disabled = select.disabled;
     options.forEach((row, i) => row.setAttribute('aria-selected', String(i === select.selectedIndex)));
@@ -93,6 +94,7 @@ export function bindPositionSelect(select: HTMLSelectElement, panel: HTMLElement
     }
   });
   select.addEventListener('change', sync);
+  window.addEventListener('minibrowser-translated', () => { close(); sync(); });
   document.addEventListener('pointerdown', event => {
     if (!popup.hidden && !trigger.contains(event.target as Node) && !popup.contains(event.target as Node)) close();
   }, true);

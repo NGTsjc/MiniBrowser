@@ -29,6 +29,8 @@ pub fn apply(
     (settings.width, settings.height) =
         windows::current_size(app).unwrap_or((old.width, old.height));
     settings.validate()?;
+    let (catalog, invalid_locale) =
+        crate::localization::prepare(&state.store.root, settings.language_file.as_deref())?;
     let target = if !url_edited {
         None
     } else if settings.startup_url.is_empty() {
@@ -88,14 +90,21 @@ pub fn apply(
                 }
             }
         }
-        return Err(errors.join(crate::localization::text("common.separator")));
+        return Err(errors.join(&crate::localization::text("common.separator")));
     }
 
     *state.settings.lock().unwrap() = settings.clone();
     state.preserve_config.store(false, Ordering::SeqCst);
     *state.warning.lock().unwrap() = None;
     crate::theme::sync(app, &settings.accent_color);
-    let mut warnings = Vec::new();
+    crate::localization::activate(catalog);
+    let mut warnings = crate::localization::sync(app);
+    if !invalid_locale.is_empty() {
+        warnings.push(crate::localization::format(
+            "errors.localeFields",
+            &[("keys", invalid_locale.join(", "))],
+        ));
+    }
     if old_key != new_key {
         if let Some(key) = old_key {
             if let Err(e) = app.global_shortcut().unregister(key) {
@@ -145,7 +154,7 @@ pub fn apply(
             "settings.savedWarnings",
             &[(
                 "warnings",
-                (warnings.join(crate::localization::text("common.separator"))).to_string(),
+                (warnings.join(&crate::localization::text("common.separator"))).to_string(),
             )],
         ));
     }

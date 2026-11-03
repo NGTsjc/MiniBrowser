@@ -28,6 +28,18 @@ export function createContextMenu(host: HTMLElement, report: (error: unknown) =>
     </button>`).join('')}`;
   host.append(menu);
   const buttons = [...menu.querySelectorAll<HTMLButtonElement>('[role=menuitem]')];
+  window.addEventListener('minibrowser-translated', () => {
+    menu.setAttribute('aria-label', t('menu.title'));
+    menu.querySelector('.menu-heading span')!.textContent = t('menu.title');
+    buttons.forEach(button => {
+      const label = button.querySelector<HTMLElement>('.menu-label')!;
+      const key = `menu.${button.dataset.action === 'restore' ? 'restore' : button.dataset.action}` as Parameters<typeof t>[0];
+      label.textContent = t(key); label.title = t(key);
+    });
+    menu.querySelector('[data-hint=restore]')!.textContent = t('menu.restoreHint');
+  });
+
+  window.dispatchEvent(new Event('minibrowser-translated'));
   let active = false;
   let selected = 0;
   let running = false;

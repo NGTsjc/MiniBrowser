@@ -43,7 +43,7 @@ pub fn sync(app: &AppHandle, force: bool) -> Result<(), String> {
         {
             Ok(())
         } else {
-            Err(crate::localization::text("errors.cornerPlatform").into())
+            Err(crate::localization::text("errors.cornerPlatform"))
         }
     }
 }
@@ -147,7 +147,7 @@ pub fn install_controls(app: &AppHandle, controls: &tauri::WebviewWindow) -> Res
                     }
                     crate::windows::notify(
                         &handle,
-                        crate::localization::text("errors.resizeControl"),
+                        &crate::localization::text("errors.resizeControl"),
                     );
                 }
             }
@@ -385,14 +385,14 @@ mod native {
                 }
             };
             if handle.0.is_null() {
-                Err(crate::localization::text("errors.regionCreate").into())
+                Err(crate::localization::text("errors.regionCreate"))
             } else {
                 Ok(Self(handle))
             }
         }
         fn apply(self, hwnd: HWND) -> Result<(), String> {
             if unsafe { SetWindowRgn(hwnd, Some(self.0), true) } == 0 {
-                return Err(crate::localization::text("errors.regionApply").into());
+                return Err(crate::localization::text("errors.regionApply"));
             }
             std::mem::forget(self);
             Ok(())
@@ -410,7 +410,7 @@ mod native {
             let points: Vec<POINT> = points.iter().map(|p| POINT { x: p[0], y: p[1] }).collect();
             let region = unsafe { CreatePolygonRgn(&points, WINDING) };
             if region.0.is_null() {
-                Err(crate::localization::text("errors.arcCreate").into())
+                Err(crate::localization::text("errors.arcCreate"))
             } else {
                 Ok(Self(region))
             }
@@ -501,14 +501,14 @@ mod native {
                 || OffsetRgn(inner.0, grip - dx, grip - dy).0 == ERROR
                 || CombineRgn(Some(outer.0), Some(outer.0), Some(inner.0), RGN_DIFF).0 == ERROR
             {
-                return Err(crate::localization::text("errors.resizeCreate").into());
+                return Err(crate::localization::text("errors.resizeCreate"));
             }
             let mut existing = 0_usize;
             if !GetWindowSubclass(child, Some(procedure), 0x4d44, Some(&mut existing)).as_bool() {
                 let data = Box::into_raw(Box::new((app.clone(), target.0 as isize)));
                 if !SetWindowSubclass(child, Some(procedure), 0x4d44, data as usize).as_bool() {
                     drop(Box::from_raw(data));
-                    return Err(crate::localization::text("errors.resizeInstall").into());
+                    return Err(crate::localization::text("errors.resizeInstall"));
                 }
             }
         }
@@ -597,7 +597,7 @@ mod native {
                     )
                     .0 == ERROR
                 {
-                    return Err(crate::localization::text("errors.controlsClip").into());
+                    return Err(crate::localization::text("errors.controlsClip"));
                 }
             }
         }
@@ -618,7 +618,7 @@ mod native {
                     Some(region) => region.apply(hwnd),
                     None => {
                         if unsafe { SetWindowRgn(hwnd, None, true) } == 0 {
-                            Err(crate::localization::text("errors.rectangleRestore").into())
+                            Err(crate::localization::text("errors.rectangleRestore"))
                         } else {
                             Ok(())
                         }
@@ -628,7 +628,7 @@ mod native {
                     errors.push(e);
                 }
             }
-            return Err(errors.join(crate::localization::text("common.separator")));
+            return Err(errors.join(&crate::localization::text("common.separator")));
         }
         LAST.with(|last| *last.borrow_mut() = Some(geometry));
         Ok(())

@@ -20,7 +20,7 @@ fn receive<T>(
                 .compare_exchange(0, 2, Ordering::SeqCst, Ordering::SeqCst)
                 .is_ok()
             {
-                Err(crate::localization::text("errors.uiTimeout").into())
+                Err(crate::localization::text("errors.uiTimeout"))
             } else {
                 receive
                     .recv()
@@ -28,7 +28,7 @@ fn receive<T>(
             }
         }
         Err(RecvTimeoutError::Disconnected) => {
-            Err(crate::localization::text("errors.uiInterrupted").into())
+            Err(crate::localization::text("errors.uiInterrupted"))
         }
     }
 }

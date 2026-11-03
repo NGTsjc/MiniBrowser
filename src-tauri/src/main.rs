@@ -8,6 +8,7 @@ mod context_menu;
 mod control_layout;
 mod corners;
 mod drag_position;
+mod language_picker;
 mod lifecycle;
 mod localization;
 mod navigation;
@@ -61,6 +62,8 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::get_settings,
             commands::apply_settings,
+            commands::get_locale,
+            commands::choose_language_file,
             commands::preview_opacity,
             commands::preview_corner_radius,
             commands::preview_drag_position,
@@ -124,7 +127,7 @@ fn initialize(app: &mut tauri::App) -> Result<(), Box<dyn std::error::Error>> {
     let warning = loaded.warning.map(|key| localization::text(key).to_owned());
     let warnings: Vec<String> = warning.into_iter().chain(locale_warning).collect();
     let warning =
-        (!warnings.is_empty()).then(|| warnings.join(localization::text("common.separator")));
+        (!warnings.is_empty()).then(|| warnings.join(&localization::text("common.separator")));
     let session = store.new_session()?;
     let url = loaded.settings.startup_url.clone();
     app.manage(AppState::new(

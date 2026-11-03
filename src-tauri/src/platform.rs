@@ -28,7 +28,7 @@ pub fn startup_gate() -> Result<StartupGate, String> {
         let status = WaitForSingleObject(mutex, 30_000);
         if status != WAIT_OBJECT_0 && status != WAIT_ABANDONED {
             let _ = CloseHandle(mutex);
-            return Err(crate::localization::text("errors.startupGate").into());
+            return Err(crate::localization::text("errors.startupGate"));
         }
         Ok(StartupGate(mutex))
     }
@@ -61,7 +61,7 @@ pub fn check_runtime() -> Result<(), String> {
         )
         .map_err(|e| e.to_string())?;
         if comparison < 0 {
-            return Err(crate::localization::text("errors.runtimeOld").into());
+            return Err(crate::localization::text("errors.runtimeOld"));
         }
     }
     Ok(())
@@ -133,7 +133,7 @@ pub fn set_opacity(window: &WebviewWindow, opacity: f64) -> Result<(), String> {
     #[cfg(not(windows))]
     {
         let _ = (window, opacity);
-        Err(crate::localization::text("errors.opacityPlatform").into())
+        Err(crate::localization::text("errors.opacityPlatform"))
     }
 }
 
@@ -282,7 +282,7 @@ pub fn secure_webview(browser: &WebviewWindow, app: AppHandle) -> Result<(), Str
                     if crate::operation::is_current_session(&app, &session) {
                         crate::windows::notify(
                             &app,
-                            crate::localization::text("errors.permissions"),
+                            &crate::localization::text("errors.permissions"),
                         );
                     }
                     Ok(())

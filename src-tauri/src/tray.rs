@@ -35,7 +35,8 @@ pub fn setup(app: &AppHandle) -> tauri::Result<()> {
         None::<&str>,
     )?;
     let menu = Menu::with_items(app, &[&toggle, &reset, &close, &restart])?;
-    *app.state::<AppState>().toggle_item.lock().unwrap() = Some(toggle);
+    *app.state::<AppState>().toggle_item.lock().unwrap() = Some(toggle.clone());
+    *app.state::<AppState>().tray_items.lock().unwrap() = vec![toggle, reset, close, restart];
     TrayIconBuilder::with_id("main-tray")
         .icon(
             app.default_window_icon()
@@ -90,6 +91,25 @@ fn reset_window(app: &AppHandle) -> Result<(), String> {
         if let Some(controls) = app.get_webview_window("controls") {
             controls.set_focus().map_err(|e| e.to_string())?;
         }
+    }
+    Ok(())
+}
+
+pub fn translate(app: &AppHandle) -> tauri::Result<()> {
+    use std::sync::atomic::Ordering;
+    let state = app.state::<AppState>();
+    let toggle = if state.visible.load(Ordering::SeqCst) {
+        "tray.hide"
+    } else {
+        "tray.show"
+    };
+    for (item, key) in state.tray_items.lock().unwrap().iter().zip([
+        toggle,
+        "tray.reset",
+        "menu.close",
+        "menu.restart",
+    ]) {
+        item.set_text(crate::localization::menu_text(key))?;
     }
     Ok(())
 }

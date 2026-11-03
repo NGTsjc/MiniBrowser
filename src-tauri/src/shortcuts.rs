@@ -45,7 +45,7 @@ pub fn startup(app: &AppHandle) {
             let mut warning = state.warning.lock().unwrap();
             *warning = Some(match warning.take() {
                 Some(previous) => {
-                    [previous, message].join(crate::localization::text("common.separator"))
+                    [previous, message].join(&crate::localization::text("common.separator"))
                 }
                 None => message,
             });

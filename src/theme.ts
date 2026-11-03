@@ -44,6 +44,10 @@ export function bindThemeEditor(panel: HTMLElement) {
     applyTheme(value, panel);
     swatches.forEach(button => button.setAttribute('aria-pressed', String(button.dataset.color === value.toUpperCase())));
   };
+  window.addEventListener('minibrowser-translated', () => {
+    hex.setCustomValidity(validAccent(hex.value) ? '' : t('errors.colorInput'));
+    swatches.forEach(button => button.setAttribute('aria-label', `${t('settings.accent')} ${button.dataset.color}`));
+  });
   const set = (value: string) => { hex.value = value.toUpperCase(); preview(hex.value); };
   picker.addEventListener('input', () => set(picker.value));
   hex.addEventListener('input', () => preview(hex.value));

@@ -24,7 +24,7 @@ pnpm dev
 | `pnpm build:ui` | 类型检查并构建前端到 `dist/` |
 | `pnpm test:native` | Rust 单元测试 |
 | `pnpm test:unit` | 版本脚本、预览调度与文案格式化单元测试 |
-| `pnpm test:localization` | 英文／中文覆盖、重启生效、纯文本转义与便携路径检查；先构建调试版 |
+| `pnpm test:localization` | 语言路径、原生文件选择、即时切换、纯文本转义与便携路径检查；先构建调试版 |
 | `pnpm test:drag-position` | 四角拖动区、镜像裁剪、草稿事务、极小窗口及重启持久化检查；先构建调试版 |
 | `pnpm test:appearance` | 下拉列表交互、显隐原生边框样式采样、缩放及 Alt+F4；先构建调试版 |
 | `pnpm test:maintenance` | 维护专项原生故障／竞争检查，先运行 `build:debug` |

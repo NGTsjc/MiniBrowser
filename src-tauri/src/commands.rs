@@ -4,7 +4,7 @@ use tauri::{AppHandle, Emitter, Manager, WebviewWindow};
 
 fn authorize(caller: &WebviewWindow) -> Result<(), String> {
     if caller.label() != "controls" {
-        return Err(crate::localization::text("errors.controlPermission").into());
+        return Err(crate::localization::text("errors.controlPermission"));
     }
     let url = caller.url().map_err(|e| e.to_string())?;
     let local = url.scheme() == "tauri"
@@ -13,7 +13,7 @@ fn authorize(caller: &WebviewWindow) -> Result<(), String> {
             && url.host_str() == Some("127.0.0.1")
             && url.port() == Some(1420));
     if !local {
-        return Err(crate::localization::text("errors.localOnly").into());
+        return Err(crate::localization::text("errors.localOnly"));
     }
     Ok(())
 }
@@ -122,7 +122,7 @@ pub fn preview_opacity(
         let _operation = crate::operation::Guard::begin(app)?;
         crate::operation::validate_preview(app, epoch)?;
         if !(crate::parameters::MIN_OPACITY..=crate::parameters::MAX_OPACITY).contains(&opacity) {
-            return Err(crate::localization::text("errors.opacity").into());
+            return Err(crate::localization::text("errors.opacity"));
         }
         crate::test_support::fail("opacity_preview")?;
         windows::set_opacity(app, opacity)
@@ -228,5 +228,30 @@ pub fn apply_settings(
     authorize(&caller)?;
     crate::ui_thread::run(&app, move |app| {
         crate::settings_transaction::apply(app, settings, url_edited, epoch)
+    })
+}
+
+#[tauri::command]
+pub fn get_locale(caller: WebviewWindow) -> Result<crate::localization::Catalog, String> {
+    let url = caller.url().map_err(|e| e.to_string())?;
+    let local = (url.scheme() == "tauri"
+        || url.origin().ascii_serialization() == "http://tauri.localhost"
+        || (cfg!(debug_assertions)
+            && url.origin().ascii_serialization() == "http://127.0.0.1:1420"))
+        && matches!(url.path(), "/" | "/index.html");
+    if !local || !matches!(caller.label(), "browser" | "controls") {
+        return Err(crate::localization::text("errors.localOnly"));
+    }
+    Ok(crate::localization::catalog())
+}
+#[tauri::command]
+pub fn choose_language_file(
+    caller: WebviewWindow,
+    app: AppHandle,
+) -> Result<Option<String>, String> {
+    authorize(&caller)?;
+    crate::ui_thread::run(&app, move |app| {
+        let _guard = crate::operation::Guard::begin(app)?;
+        crate::language_picker::choose(&caller, &app.state::<AppState>().store.root)
     })
 }

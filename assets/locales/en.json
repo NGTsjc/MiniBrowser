@@ -133,7 +133,7 @@
   "errors.zoomRestore": "Could not restore page zoom: {error}",
   "settings.savedWarnings": "Settings saved; {warnings}",
   "common.separator": "; ",
-  "errors.localeFile": "Could not load custom text from {path}. English is in use. {error}",
+  "errors.localeFile": "Could not load custom text from {path}: {error}",
   "errors.localeFields": "Some custom text entries are invalid and use English defaults: {keys}",
   "window.controlsTitle": "MiniBrowser Settings",
   "errors.localePath": "The language file must be a relative path inside MiniBrowser.data",
@@ -144,5 +144,12 @@
   "positions.topRight": "Top right",
   "positions.bottomLeft": "Bottom left",
   "positions.bottomRight": "Bottom right",
-  "errors.dragRollback": "{error}; Could not restore window controls: {rollback}"
+  "errors.dragRollback": "{error}; Could not restore window controls: {rollback}",
+  "settings.languageFile": "Language file",
+  "settings.languagePlaceholder": "locale.json (optional)",
+  "settings.languageHint": "Relative to MiniBrowser.data. Leave blank for English. Confirm to apply immediately.",
+  "settings.languageBrowse": "Browse…",
+  "settings.languageBrowseTitle": "Select language JSON inside MiniBrowser.data",
+  "errors.localeSelection": "Select a JSON file inside MiniBrowser.data.",
+  "errors.localePickerUnsupported": "File browsing is not available on this platform. Enter a relative path instead."
 }

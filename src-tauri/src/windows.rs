@@ -118,7 +118,7 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
             if !allowed {
                 notify(
                     &handle,
-                    crate::localization::text("errors.navigationBlocked"),
+                    &crate::localization::text("errors.navigationBlocked"),
                 );
             }
             allowed
@@ -133,7 +133,7 @@ pub fn build(app: &AppHandle, url: &str) -> Result<(), String> {
             {
                 notify(
                     &download_handle,
-                    crate::localization::text("errors.download"),
+                    &crate::localization::text("errors.download"),
                 );
             }
             false
@@ -448,7 +448,7 @@ pub fn open_panel(app: &AppHandle) -> Result<(), String> {
 fn open_panel_inner(app: &AppHandle) -> Result<(), String> {
     let state = app.state::<AppState>();
     if state.busy.load(Ordering::SeqCst) {
-        return Err(crate::localization::text("errors.sessionBusy").into());
+        return Err(crate::localization::text("errors.sessionBusy"));
     }
     crate::context_menu::dismiss(app)?;
     let already_open = state.panel_open.swap(true, Ordering::SeqCst);
@@ -602,7 +602,7 @@ pub fn set_opacity(app: &AppHandle, opacity: f64) -> Result<(), String> {
                 ));
             }
         }
-        return Err(errors.join(crate::localization::text("common.separator")));
+        return Err(errors.join(&crate::localization::text("common.separator")));
     }
     *state.effective_opacity.lock().unwrap() = opacity;
     Ok(())
@@ -620,7 +620,7 @@ pub fn apply_window_settings(app: &AppHandle, settings: &Settings) -> Result<(),
 
 pub fn restore(app: &AppHandle) -> Result<(), String> {
     if app.state::<AppState>().busy.load(Ordering::SeqCst) {
-        return Err(crate::localization::text("errors.busy").into());
+        return Err(crate::localization::text("errors.busy"));
     }
     if let Some(browser) = app.get_webview_window("browser") {
         let defaults = Settings::default();

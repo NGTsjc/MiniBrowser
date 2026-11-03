@@ -11,7 +11,7 @@ impl Guard {
             || state.exiting.load(Ordering::SeqCst)
             || state.pending_exit.load(Ordering::SeqCst) != 0
         {
-            return Err(crate::localization::text("errors.exiting").into());
+            return Err(crate::localization::text("errors.exiting"));
         }
         state
             .busy
@@ -34,7 +34,7 @@ pub fn validate_preview(app: &AppHandle, epoch: Option<u64>) -> Result<(), Strin
     if epoch
         .is_some_and(|epoch| epoch != app.state::<AppState>().preview_epoch.load(Ordering::SeqCst))
     {
-        return Err(crate::localization::text("errors.previewExpired").into());
+        return Err(crate::localization::text("errors.previewExpired"));
     }
     Ok(())
 }

@@ -1,4 +1,4 @@
-import { t, h } from './i18n';
+import { t, h, initializeLocale } from './i18n';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { bindToolbar, renderDragShape } from './gear';
@@ -11,6 +11,8 @@ import './style.css';
 import { LatestPreview } from './preview';
 import { parameters, initializeParameters } from './parameters';
 
+async function start() {
+await initializeLocale();
 initializeParameters();
 
 initializeTheme();
@@ -20,46 +22,49 @@ const view = new URLSearchParams(location.search).get('view');
 
 if (view !== 'controls') {
   document.body.classList.add('guide');
-  app.innerHTML = `<main class="welcome"><div class="brand-mark">m<span>↗</span></div><div class="eyebrow">MINIBROWSER</div><h1>${h('guide.title')}</h1><p>${h('guide.intro')}</p><div class="guide-card"><span>01</span><p>${h('guide.menu')}<br><small>${h('guide.context')}</small></p></div><div class="guide-card"><span>02</span><p>${h('guide.resize')}<br><small>${h('guide.recover')}</small></p></div><footer>${h('guide.footer')}</footer></main>`;
+  app.innerHTML = `<main class="welcome"><div class="brand-mark">m<span>↗</span></div><div class="eyebrow">MINIBROWSER</div><h1 data-i18n="guide.title">${h('guide.title')}</h1><p data-i18n="guide.intro">${h('guide.intro')}</p><div class="guide-card"><span>01</span><p><span data-i18n="guide.menu">${h('guide.menu')}</span><br><small data-i18n="guide.context">${h('guide.context')}</small></p></div><div class="guide-card"><span>02</span><p><span data-i18n="guide.resize">${h('guide.resize')}</span><br><small data-i18n="guide.recover">${h('guide.recover')}</small></p></div><footer data-i18n="guide.footer">${h('guide.footer')}</footer></main>`;
 } else {
   app.innerHTML = `
-    <div id="toolbar" class="toolbar" title="${h('toolbar.hint')}" aria-label="${h('toolbar.label')}">
+    <div id="toolbar" class="toolbar" title="${h('toolbar.hint')}" data-i18n-title="toolbar.hint" aria-label="${h('toolbar.label')}" data-i18n-aria-label="toolbar.label">
       <span class="drag-grip" aria-hidden="true">⠿</span>
     </div>
-    <section id="panel" class="panel" hidden aria-label="${h('settings.title')}">
-      <header><div><div class="eyebrow">MINIBROWSER</div><h1>${h('settings.title')}</h1></div><span class="session-badge"><i></i> ${h('settings.session')}</span></header>
+    <section id="panel" class="panel" hidden aria-label="${h('settings.title')}" data-i18n-aria-label="settings.title">
+      <header><div><div class="eyebrow">MINIBROWSER</div><h1 data-i18n="settings.title">${h('settings.title')}</h1></div><span class="session-badge"><i></i> <span data-i18n="settings.session">${h('settings.session')}</span></span></header>
       <form id="settings-form">
         <div class="scroll-area">
           <div id="notice" class="notice" role="status" hidden></div>
-          <label class="field-label" for="url">${h('settings.url')}</label>
-          <input id="url" type="text" inputmode="url" spellcheck="false" placeholder="${h('settings.urlPlaceholder')}" autocomplete="off" />
-          <p class="hint">${h('settings.urlHint')}</p>
+          <label class="field-label" for="url" data-i18n="settings.url">${h('settings.url')}</label>
+          <input id="url" type="text" inputmode="url" spellcheck="false" placeholder="${h('settings.urlPlaceholder')}" data-i18n-placeholder="settings.urlPlaceholder" autocomplete="off" />
+          <p class="hint" data-i18n="settings.urlHint">${h('settings.urlHint')}</p>
           <div class="divider"></div>
-          <label class="setting-row" for="topmost"><span><strong>${h('settings.topmost')}</strong><small>${h('settings.topmostHint')}</small></span><input id="topmost" type="checkbox" class="switch" /></label>
-          <label class="setting-row" for="pause-media"><span><strong>${h('settings.pause')}</strong><small>${h('settings.pauseHint')}</small></span><input id="pause-media" type="checkbox" class="switch" /></label>
-          <div class="slider-heading"><label class="field-label" for="opacity">${h('settings.opacity')}</label><output id="opacity-value">100%</output></div>
+          <label class="setting-row" for="topmost"><span><strong data-i18n="settings.topmost">${h('settings.topmost')}</strong><small data-i18n="settings.topmostHint">${h('settings.topmostHint')}</small></span><input id="topmost" type="checkbox" class="switch" /></label>
+          <label class="setting-row" for="pause-media"><span><strong data-i18n="settings.pause">${h('settings.pause')}</strong><small data-i18n="settings.pauseHint">${h('settings.pauseHint')}</small></span><input id="pause-media" type="checkbox" class="switch" /></label>
+          <div class="slider-heading"><label class="field-label" for="opacity" data-i18n="settings.opacity">${h('settings.opacity')}</label><output id="opacity-value">100%</output></div>
           <input id="opacity" type="range" min="${parameters.limits.minOpacity * 100}" max="${parameters.limits.maxOpacity * 100}" step="1" value="${parameters.defaults.opacity * 100}" />
-          <div class="range-labels"><span>${h('settings.transparent')}</span><span>${h('settings.opaque')}</span></div>
-          <div class="slider-heading"><label class="field-label" for="corner-radius">${h('settings.radius')}</label><output id="corner-radius-value">0 px</output></div>
+          <div class="range-labels"><span data-i18n="settings.transparent">${h('settings.transparent')}</span><span data-i18n="settings.opaque">${h('settings.opaque')}</span></div>
+          <div class="slider-heading"><label class="field-label" for="corner-radius" data-i18n="settings.radius">${h('settings.radius')}</label><output id="corner-radius-value">0 px</output></div>
           <input id="corner-radius" type="range" min="${parameters.limits.minCornerRadius}" max="${parameters.limits.maxCornerRadius}" step="${parameters.limits.cornerRadiusStep}" value="${parameters.defaults.cornerRadius}" />
-          <div class="range-labels"><span>${h('settings.square')}</span><span>${h('settings.round')}</span></div>
-          <p class="hint">${h('settings.previewHint')}</p>
-          <label class="field-label position-label" for="drag-position">${h('settings.dragPosition')}</label>
-          <select id="drag-position">${parameters.limits.dragPositions.map(position => `<option value="${position}">${h(`positions.${position}`)}</option>`).join('')}</select>
-          <div class="theme-field"><label class="field-label" for="accent-hex">${h('settings.accent')}</label>
-            <div class="theme-editor"><input id="accent-picker" type="color" aria-label="${h('settings.pickColor')}" value="${parameters.defaults.accentColor}" /><input id="accent-hex" type="text" aria-label="${h('settings.colorHex')}" pattern="#[0-9A-Fa-f]{6}" required maxlength="7" spellcheck="false" autocomplete="off" value="${parameters.defaults.accentColor}" /><button id="accent-reset" type="button" class="text-button">${h('settings.reset')}</button></div>
-            <div class="theme-swatches" role="group" aria-label="${h('settings.presets')}">${[parameters.defaults.accentColor, '#7C3AED', '#DB2777', '#DC2626', '#B45309', '#047857', '#000000', '#FFFFFF'].map(color => `<button type="button" class="theme-swatch" data-color="${color}" aria-label="${h('settings.accent')} ${color}" aria-pressed="false"></button>`).join('')}</div>
-            <p class="hint">${h('settings.themeHint')}</p>
+          <div class="range-labels"><span data-i18n="settings.square">${h('settings.square')}</span><span data-i18n="settings.round">${h('settings.round')}</span></div>
+          <p class="hint" data-i18n="settings.previewHint">${h('settings.previewHint')}</p>
+          <label class="field-label position-label" for="drag-position" data-i18n="settings.dragPosition">${h('settings.dragPosition')}</label>
+          <select id="drag-position">${parameters.limits.dragPositions.map(position => `<option data-i18n="positions.${position}" value="${position}">${h(`positions.${position}`)}</option>`).join('')}</select>
+          <div class="theme-field"><label class="field-label" for="accent-hex" data-i18n="settings.accent">${h('settings.accent')}</label>
+            <div class="theme-editor"><input id="accent-picker" type="color" aria-label="${h('settings.pickColor')}" data-i18n-aria-label="settings.pickColor" value="${parameters.defaults.accentColor}" /><input id="accent-hex" type="text" aria-label="${h('settings.colorHex')}" data-i18n-aria-label="settings.colorHex" pattern="#[0-9A-Fa-f]{6}" required maxlength="7" spellcheck="false" autocomplete="off" value="${parameters.defaults.accentColor}" /><button id="accent-reset" type="button" class="text-button" data-i18n="settings.reset">${h('settings.reset')}</button></div>
+            <div class="theme-swatches" role="group" aria-label="${h('settings.presets')}" data-i18n-aria-label="settings.presets">${[parameters.defaults.accentColor, '#7C3AED', '#DB2777', '#DC2626', '#B45309', '#047857', '#000000', '#FFFFFF'].map(color => `<button type="button" class="theme-swatch" data-color="${color}" aria-label="${h('settings.accent')} ${color}" aria-pressed="false"></button>`).join('')}</div>
+            <p class="hint" data-i18n="settings.themeHint">${h('settings.themeHint')}</p>
           </div>
-          <label class="field-label shortcut-label" for="shortcut">${h('settings.shortcut')}</label>
-          <div class="shortcut-row"><input id="shortcut" readonly placeholder="${h('settings.recordShortcut')}" autocomplete="off" /><button id="clear-shortcut" type="button" class="text-button">${h('settings.clear')}</button></div>
-          <p class="hint">${h('settings.shortcutHint')}</p>
+          <label class="field-label language-label" for="language-file" data-i18n="settings.languageFile">${h('settings.languageFile')}</label>
+          <div class="language-row"><input id="language-file" type="text" spellcheck="false" autocomplete="off" placeholder="${h('settings.languagePlaceholder')}" data-i18n-placeholder="settings.languagePlaceholder" /><button id="browse-language" type="button" data-i18n="settings.languageBrowse">${h('settings.languageBrowse')}</button></div>
+          <p class="hint" data-i18n="settings.languageHint">${h('settings.languageHint')}</p>
+          <label class="field-label shortcut-label" for="shortcut" data-i18n="settings.shortcut">${h('settings.shortcut')}</label>
+          <div class="shortcut-row"><input id="shortcut" readonly placeholder="${h('settings.recordShortcut')}" data-i18n-placeholder="settings.recordShortcut" autocomplete="off" /><button id="clear-shortcut" type="button" class="text-button" data-i18n="settings.clear">${h('settings.clear')}</button></div>
+          <p class="hint" data-i18n="settings.shortcutHint">${h('settings.shortcutHint')}</p>
           <div class="divider"></div>
-          <div class="actions"><button id="refresh" type="button">↻ ${h('settings.refresh')}</button><button id="clear-cache" type="button">${h('settings.clearCache')}</button><button id="close" type="button" class="danger">${h('menu.close')}</button></div>
-          <div id="clear-confirm" class="confirm-box" hidden><strong>${h('settings.clearTitle')}</strong><p>${h('settings.clearBody')}</p><div><button id="clear-no" type="button">${h('settings.back')}</button><button id="clear-yes" type="button" class="danger">${h('settings.clearReload')}</button></div></div>
-          <p class="footnote">${h('settings.footnote')}</p>
+          <div class="actions"><button id="refresh" type="button">↻ <span data-i18n="settings.refresh">${h('settings.refresh')}</span></button><button id="clear-cache" type="button" data-i18n="settings.clearCache">${h('settings.clearCache')}</button><button id="close" type="button" class="danger" data-i18n="menu.close">${h('menu.close')}</button></div>
+          <div id="clear-confirm" class="confirm-box" hidden><strong data-i18n="settings.clearTitle">${h('settings.clearTitle')}</strong><p data-i18n="settings.clearBody">${h('settings.clearBody')}</p><div><button id="clear-no" type="button" data-i18n="settings.back">${h('settings.back')}</button><button id="clear-yes" type="button" class="danger" data-i18n="settings.clearReload">${h('settings.clearReload')}</button></div></div>
+          <p class="footnote" data-i18n="settings.footnote">${h('settings.footnote')}</p>
         </div>
-        <footer class="form-footer"><span id="saving" aria-live="polite"></span><button id="cancel" title="${h('settings.cancel')}" type="button">${h('settings.cancel')}</button><button id="confirm" title="${h('settings.confirm')}" type="submit" class="primary">${h('settings.confirm')}</button></footer>
+        <footer class="form-footer"><span id="saving" aria-live="polite"></span><button id="cancel" title="${h('settings.cancel')}" data-i18n-title="settings.cancel" type="button" data-i18n="settings.cancel">${h('settings.cancel')}</button><button id="confirm" title="${h('settings.confirm')}" data-i18n-title="settings.confirm" type="submit" class="primary" data-i18n="settings.confirm">${h('settings.confirm')}</button></footer>
       </form>
     </section>`;
 
@@ -73,6 +78,7 @@ if (view !== 'controls') {
   const cornerRadius = element<HTMLInputElement>('corner-radius');
   const dragPosition = element<HTMLSelectElement>('drag-position');
   const positionSelect = bindPositionSelect(dragPosition, panel);
+  const languageFile = element<HTMLInputElement>('language-file');
   const shortcut = element<HTMLInputElement>('shortcut');
   const notice = element<HTMLElement>('notice');
   const confirmation = element<HTMLElement>('clear-confirm');
@@ -131,6 +137,7 @@ if (view !== 'controls') {
     opacity.value = String(Math.round(settings.opacity * 100));
     element<HTMLOutputElement>('opacity-value').value = `${opacity.value}%`;
     shortcut.value = settings.shortcut ?? '';
+    languageFile.value = settings.languageFile ?? '';
     notice.hidden = !snapshot.warning;
     notice.textContent = snapshot.warning ?? '';
     confirmation.hidden = true;
@@ -187,6 +194,13 @@ if (view !== 'controls') {
     keys.push(key);
     shortcut.value = keys.join('+');
   });
+  element('browse-language').addEventListener('click', async () => {
+    if (busy) return;
+    setBusy(true);
+    try { const selected = await invoke<string | null>('choose_language_file'); if (selected !== null) languageFile.value = selected; }
+    catch (error) { report(error); }
+    finally { setBusy(false); }
+  });
   element('clear-shortcut').addEventListener('click', () => { shortcut.value = ''; });
   element('refresh').addEventListener('click', () => void action('refresh_page'));
   element('close').addEventListener('click', () => void action('close_app'));
@@ -209,7 +223,7 @@ if (view !== 'controls') {
     await flushPreviews();
     const draft: Settings = { ...settings, startupUrl: url.value, alwaysOnTop: topmost.checked,
       opacity: Number(opacity.value) / 100, shortcut: shortcut.value || null, pauseMediaOnHide: pause.checked,
-      accentColor: themeEditor.value(), cornerRadius: Number(cornerRadius.value), dragPosition: dragPosition.value as DragPosition };
+      accentColor: themeEditor.value(), cornerRadius: Number(cornerRadius.value), dragPosition: dragPosition.value as DragPosition, languageFile: languageFile.value.trim() || null };
     try {
       const result = await invoke<ApplyOutcome>('apply_settings', {settings:draft, urlEdited:editedUrl, epoch:previewEpoch});
       if (result.warnings.length) {
@@ -241,3 +255,6 @@ if (view !== 'controls') {
   }
   void initialize().catch(report);
 }
+
+}
+void start().catch(error => { document.body.textContent = String(error); });

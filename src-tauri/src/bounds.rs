@@ -200,7 +200,7 @@ pub fn install(window: &WebviewWindow, app: &AppHandle) -> Result<(), String> {
                     unsafe {
                         drop(Box::from_raw(data));
                     }
-                    crate::windows::notify(&handle, crate::localization::text("errors.bounds"));
+                    crate::windows::notify(&handle, &crate::localization::text("errors.bounds"));
                 }
             }
         })
